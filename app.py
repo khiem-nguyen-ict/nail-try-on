@@ -15,6 +15,12 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageDraw, ImageOps
 import urllib.parse
 import urllib.request
+from dotenv import load_dotenv
+
+load_dotenv()
+
+if not os.getenv("ROBOFLOW_API_KEY"):
+    raise RuntimeError("ROBOFLOW_API_KEY environment variable is not set. Please set it to your RoBoFlow API key.")
 
 app = FastAPI()
 
@@ -29,15 +35,18 @@ async def get_index():
 
 # Default fill color: solid red.
 RED = (255, 0, 0)
-NAIL_ALPHA = 0.8
-NAIL_BLUR = 2
+NAIL_ALPHA = float(os.getenv("NAIL_ALPHA", "0.8"))
+NAIL_BLUR = int(os.getenv("NAIL_BLUR", "2"))
+SPACE_DETECTION_THRESHOLD = float(os.getenv("SPACE_DETECTION_THRESHOLD", "0.1"))
+YOLO_CONFIDENCE_THRESHOLD = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", "0.5"))
+
 TARGET_HSV = np.array([0, 255, 255], dtype=np.float32)
-SPACE_DETECTION_THRESHOLD = 0.1  # 10% of average image dimension
+
 
 # Configuration
 IMAGE_PATH = "IMG_3051.JPG"
 URL = "https://serverless.roboflow.com/thanh-khiem-nguyen/nails_segmentation-m8ew1-1-rfdetr-seg-large-t1"
-PARAMS = {"api_key": "wraXc2yVTPswR5wjraOf", "confidence": "0.70"}
+PARAMS = {"api_key": os.getenv("ROBOFLOW_API_KEY", ""), "confidence": YOLO_CONFIDENCE_THRESHOLD}
 
 mp_hands = mp.solutions.hands
 hands_detector = mp_hands.Hands(
@@ -259,18 +268,17 @@ def process_frame(image_bytes: bytes) -> bytes:
                 if isinstance(result, bytes):
                     return result
             else:
-                print("No nails detected that contain fingertips. Skipping nail painting.")
+                pass
         else:
-            print("No hands detected. Skipping nail painting.")
+            pass
     except Exception as e:
-        print(f"Frame processing error: {e}")
+        pass
     return image_bytes
 
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
-    print(f"Session {session_id} connected")
     
     try:
         while True:
@@ -278,9 +286,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             processed = await asyncio.to_thread(process_frame, data)
             await websocket.send_bytes(processed)
     except WebSocketDisconnect:
-        print(f"Session {session_id} disconnected")
+        pass
     except Exception as e:
-        print(f"Session {session_id} error: {e}")
         try:
             await websocket.close()
         except Exception:
@@ -307,11 +314,11 @@ def main():
                 if predictions:
                     paint_nails(image_path, filtered_nails, output_path=output_path, alpha=NAIL_ALPHA, blur=NAIL_BLUR)
                 else:
-                    print("No nails detected that contain fingertips. Skipping nail painting.")
+                    pass
             else:
-                print("No hands detected. Skipping nail painting.")
+                pass
         except urllib.error.HTTPError as e:
-            print(f"HTTP Error {e.code}: {e.read().decode('utf-8')}")
+            pass
     else:
         import uvicorn
         uvicorn.run(app, host="0.0.0.0", port=8000)
