@@ -2,7 +2,6 @@ import asyncio
 import base64
 import json
 import os
-import sys
 import time
 from io import BytesIO
 from typing import Union
@@ -49,7 +48,6 @@ TARGET_HSV = np.array([0, 255, 255], dtype=np.float32)
 
 
 # Configuration
-IMAGE_PATH = "IMG_3051.JPG"
 URL = "https://serverless.roboflow.com/thanh-khiem-nguyen/nails_segmentation-m8ew1-1-rfdetr-seg-large-t1"
 PARAMS = {"api_key": os.getenv("ROBOFLOW_API_KEY", ""), "confidence": YOLO_CONFIDENCE_THRESHOLD}
 
@@ -138,15 +136,12 @@ def _apply_color_transfer(
     return result
 
 
-def paint_nails(image_source: Union[str, bytes], result, output_path=None, color=RED, alpha: float = 1.0, blur: int = 0, preloaded_image: Union[Image.Image, None] = None):
+def paint_nails(image_source: Union[str, bytes], result, color=RED, alpha: float = 1.0, blur: int = 0, preloaded_image: Union[Image.Image, None] = None):
     """Paint detected nail regions on the image with ``color``.
 
     Args:
         image_source: Path to the source image file or JPEG bytes.
         result: Inference result dict returned by the RoBoFlow API.
-        output_path: Destination path for the painted image. When
-            ``None`` (the default) and bytes are provided, returns
-            JPEG bytes directly instead of saving.
         preloaded_image: Optional pre-decoded PIL Image to avoid
             re-reading ``image_source``.
     """
@@ -188,17 +183,10 @@ def paint_nails(image_source: Union[str, bytes], result, output_path=None, color
         painted_rgb = cv2.cvtColor(painted_bgr, cv2.COLOR_BGR2RGB)
         image = Image.fromarray(painted_rgb)
     
-    if output_path is None:
         if isinstance(image_source, bytes):
             buf = BytesIO()
-            image.save(buf, format="JPEG", quality=80)
+            image.save(buf, format="JPEG", quality=100)
             return buf.getvalue()
-        else:
-            base, ext = os.path.splitext(image_source)
-            output_path = f"{base}_painted{ext}"
-
-    image.save(output_path)
-    image.filename = output_path
     
     return image
 
@@ -304,13 +292,6 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
 
     return {"predictions": filtered}
 
-
-def process_frame(image_bytes: bytes, max_dim: int = MAX_DETECTION_DIM, roboflow_max_dim: int = ROBOFLOW_MAX_DIM) -> bytes:
-    """Process a single frame using the same logic as the original main()."""
-    result, _ = _process_frame_with_hand_status(image_bytes, max_dim, roboflow_max_dim)
-    return result
-
-
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
@@ -374,35 +355,4 @@ def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_m
         return image_bytes, False
 
 
-def main():
-    if len(sys.argv) > 1:
-        image_path = sys.argv[1]
-        output_path = sys.argv[2] if len(sys.argv) > 2 else None
-        try:
-            hands = detect_hands(image_path)
-            hands_data = json.loads(hands)
 
-            if hands_data and len(hands_data) > 0:
-                nails = detect_nails(image_path)
-
-                with ImageOps.exif_transpose(Image.open(image_path)) as img:
-                    width, height = img.size
-
-                filtered_nails = filter_nails_by_hands(nails, hands_data, width, height)
-
-                predictions = filtered_nails.get("predictions", [])
-                if predictions:
-                    paint_nails(image_path, filtered_nails, output_path=output_path, alpha=NAIL_ALPHA, blur=NAIL_BLUR)
-                else:
-                    pass
-            else:
-                pass
-        except urllib.error.HTTPError as e:
-            pass
-    else:
-        import uvicorn
-        uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
-if __name__ == "__main__":
-    main()
