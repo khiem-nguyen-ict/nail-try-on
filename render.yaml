@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: nail-try-on
+    runtime: docker
+    plan: free
+    envVars:
+      - key: ROBOFLOW_API_KEY
+        sync: false
+      - key: NAIL_ALPHA
+        value: 0.8
+      - key: NAIL_BLUR
+        value: 2
+      - key: SPACE_DETECTION_THRESHOLD
+        value: 0.5
+      - key: YOLO_CONFIDENCE_THRESHOLD
+        value: 0.5
