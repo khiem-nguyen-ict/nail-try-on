@@ -35,7 +35,7 @@ async def get_index():
 
 # Default fill color: solid red.
 RED = (255, 0, 0)
-NAIL_ALPHA = float(os.getenv("NAIL_ALPHA", "0.8"))
+NAIL_ALPHA = float(os.getenv("NAIL_ALPHA", "0.4"))
 NAIL_BLUR = int(os.getenv("NAIL_BLUR", "1"))
 SPACE_DETECTION_THRESHOLD = float(os.getenv("SPACE_DETECTION_THRESHOLD", "0.1"))
 YOLO_CONFIDENCE_THRESHOLD = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", "0.5"))
@@ -60,6 +60,20 @@ hands_detector = mp_hands.Hands(
 )
 
 FINGERTIP_IDS = [4, 8, 12, 16, 20]
+
+
+def _hex_to_rgb(hex_color: str) -> tuple:
+    """Convert a hex color string (e.g. '#FF0000' or 'FF0000') to an RGB tuple."""
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) != 6:
+        return RED
+    try:
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        return (r, g, b)
+    except ValueError:
+        return RED
 
 
 def _detect_nails(image_source: Union[str, bytes], max_dim: int = 0):
@@ -88,7 +102,7 @@ def _detect_nails(image_source: Union[str, bytes], max_dim: int = 0):
             with ImageOps.exif_transpose(Image.open(BytesIO(image_bytes))) as src:
                 resized = src.convert("RGB").resize((new_w, new_h), Image.Resampling.LANCZOS)
             buf = BytesIO()
-            resized.save(buf, format="JPEG", quality=100)
+            resized.save(buf, format="JPEG", quality=90)
             send_bytes = buf.getvalue()
 
     base64_encoded = base64.b64encode(send_bytes)
@@ -126,6 +140,7 @@ def _apply_color_transfer(
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV).astype(np.float32)
     hsv[:, :, 0] = target_hsv[0]
     hsv[:, :, 1] = target_hsv[1]
+    hsv[:, :, 2] = target_hsv[2]
 
     recolored_bgr = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
 
@@ -187,7 +202,7 @@ def _paint_nails(image_source: Union[str, bytes], regions, color=RED, alpha: flo
 
     if isinstance(image_source, bytes):
         buf = BytesIO()
-        image.save(buf, format="JPEG", quality=100)
+        image.save(buf, format="JPEG", quality=90)
         return buf.getvalue()
 
     return image
@@ -295,41 +310,66 @@ def _filter_nails_by_hands(nails_result, hands_data, width, height):
     return filtered
 
 @app.websocket("/ws/{session_id}")
-async def websocket_endpoint(websocket: WebSocket, session_id: str):
+async def websocket_endpoint(websocket: WebSocket, session_id: str, color: str = "FF0000", opacity: str = str(NAIL_ALPHA)):
     await websocket.accept()
     last_process_time = 0.0
     min_interval = 1.0 / MAX_PROCESS_FPS
     skip_until = 0
+    current_color = _hex_to_rgb(color)
+    current_opacity = float(opacity)
 
     try:
         while True:
-            data = await websocket.receive_bytes()
-            now = time.time()
-            if now < skip_until:
-                await websocket.send_bytes(data)
-                continue
-            if now - last_process_time < min_interval:
-                await websocket.send_bytes(data)
-                continue
+            message = await websocket.receive()
 
-            processed, hands_found = await asyncio.to_thread(
-                _process_frame_with_hand_status, data, MAX_DETECTION_DIM, ROBOFLOW_MAX_DIM
-            )
-            last_process_time = now
+            if message["type"] == "websocket.disconnect":
+                break
 
-            if not hands_found:
-                skip_until = now + NO_HAND_COOLDOWN
+            if message["type"] == "websocket.receive":
+                if "text" in message:
+                    try:
+                        payload = json.loads(message["text"])
+                        if isinstance(payload, dict):
+                            if payload.get("type") == "color":
+                                new_color = payload.get("value", "FF0000")
+                                current_color = _hex_to_rgb(new_color)
+                            elif payload.get("type") == "opacity":
+                                new_opacity = payload.get("value", NAIL_ALPHA)
+                                current_opacity = max(0.1, min(0.8, float(new_opacity)))
+                    except Exception:
+                        pass
+                    continue
 
-            await websocket.send_bytes(processed)
+                data = message.get("bytes")
+                if data is None:
+                    continue
+
+                now = time.time()
+                if now < skip_until:
+                    await websocket.send_bytes(data)
+                    continue
+                if now - last_process_time < min_interval:
+                    await websocket.send_bytes(data)
+                    continue
+
+                processed, hands_found = await asyncio.to_thread(
+                    _process_frame_with_hand_status, data, MAX_DETECTION_DIM, ROBOFLOW_MAX_DIM, current_color, current_opacity
+                )
+                last_process_time = now
+
+                if not hands_found:
+                    skip_until = now + NO_HAND_COOLDOWN
+
+                await websocket.send_bytes(processed)
     except WebSocketDisconnect:
         pass
-    except Exception as e:
+    except Exception:
         try:
             await websocket.close()
         except Exception:
             pass
 
-def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_max_dim: int):
+def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_max_dim: int, color: tuple = RED, alpha: float = NAIL_ALPHA):
     """Process a frame and return (processed_bytes, hands_found_bool)."""
     try:
         with ImageOps.exif_transpose(Image.open(BytesIO(image_bytes))) as img:
@@ -343,7 +383,7 @@ def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_m
 
             predictions = _filter_nails_by_hands(nails, hands_data, width, height)
             if predictions and len(predictions) > 0:
-                result = _paint_nails(image_bytes, predictions, alpha=NAIL_ALPHA, blur=NAIL_BLUR, preloaded_image=image)
+                result = _paint_nails(image_bytes, predictions, color=color, alpha=alpha, blur=NAIL_BLUR, preloaded_image=image)
                 if isinstance(result, bytes):
                     return result, True
                     
