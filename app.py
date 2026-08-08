@@ -6,9 +6,13 @@ import os
 from PIL import Image, ImageDraw, ImageOps
 import mediapipe as mp
 import numpy as np
+import cv2
 
 # Default fill color: solid red.
 RED = (255, 0, 0)
+NAIL_ALPHA = 0.6
+NAIL_BLUR = 8
+TARGET_HSV = np.array([0, 255, 255], dtype=np.float32)
 OUTPUT_IMAGE_PATH = "nails_painted.JPG"
 
 # Configuration
@@ -37,7 +41,25 @@ def detect_nails(image_path=IMAGE_PATH):
     with urllib.request.urlopen(req) as response:
         return json.loads(response.read().decode("utf-8"))
 
-def paint_nails(image_path, result, output_path=None, color=RED):
+def _apply_color_transfer(
+    bgr: np.ndarray,
+    mask: np.ndarray,
+    target_hsv: np.ndarray = TARGET_HSV,
+    alpha: float = 1.0,
+) -> np.ndarray:
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV).astype(np.float32)
+    hsv[:, :, 0] = target_hsv[0]
+    hsv[:, :, 1] = target_hsv[1]
+
+    recolored_bgr = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+    mask_3ch = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+    mask_float = mask_3ch.astype(np.float32) / 255.0
+
+    result = (bgr.astype(np.float32) * (1.0 - mask_float * alpha) + recolored_bgr.astype(np.float32) * mask_float * alpha).astype(np.uint8)
+    return result
+
+def paint_nails(image_path, result, output_path=None, color=RED, alpha: float = 1.0, blur: int = 0):
     """Paint detected nail regions on the image with ``color``.
 
     Each prediction is expected to carry a ``points`` list describing the
@@ -53,22 +75,47 @@ def paint_nails(image_path, result, output_path=None, color=RED):
             ``None`` (the default) ``<image_path>_painted.<ext>`` is used.
         color: RGB color tuple used to fill each nail region. Defaults
             to red ``(255, 0, 0)``.
+        alpha: Opacity of the applied color, between 0.0 and 1.0.
+            Defaults to 1.0 (fully opaque).
+        blur: Gaussian blur radius in pixels applied to the nail mask
+            edges to soften them. Set to 0 for no blur.
 
     Returns:
         The painted ``PIL.Image.Image`` instance (RGB mode), whose
         ``filename`` attribute holds the path the image was saved to.
     """
     image = ImageOps.exif_transpose(Image.open(image_path)).convert("RGB")
-    draw = ImageDraw.Draw(image)
 
     predictions = (result or {}).get("predictions", [])
     
-    for pred in predictions:
-        points = pred.get("points")
-        if not points:
-            continue
-        polygon = [(float(p["x"]), float(p["y"])) for p in points]
-        draw.polygon(polygon, fill=color)
+    if predictions:
+        image_np = np.array(image)
+        h, w = image_np.shape[:2]
+
+        mask = Image.new("L", (w, h), 0)
+        draw_mask = ImageDraw.Draw(mask)
+
+        for pred in predictions:
+            points = pred.get("points")
+            if not points:
+                continue
+            polygon = [(float(p["x"]), float(p["y"])) for p in points]
+            draw_mask.polygon(polygon, fill=255)
+        
+        mask_np = np.array(mask)
+        
+        if blur > 0:
+            ksize = 2 * int(blur) + 1
+            mask_np = cv2.GaussianBlur(mask_np, (ksize, ksize), sigmaX=blur)
+        
+        image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+
+        rgb_color = np.uint8([[color]])
+        target_hsv = cv2.cvtColor(rgb_color, cv2.COLOR_RGB2HSV)[0][0].astype(np.float32)
+
+        painted_bgr = _apply_color_transfer(image_bgr, mask_np, target_hsv, alpha=alpha)
+        painted_rgb = cv2.cvtColor(painted_bgr, cv2.COLOR_BGR2RGB)
+        image = Image.fromarray(painted_rgb)
     
     if output_path is None:
         base, ext = os.path.splitext(image_path)
@@ -219,7 +266,7 @@ def main():
 
             predictions = filtered_nails.get("predictions", [])
             if predictions:
-                paint_nails(IMAGE_PATH, filtered_nails, output_path=OUTPUT_IMAGE_PATH)
+                paint_nails(IMAGE_PATH, filtered_nails, output_path=OUTPUT_IMAGE_PATH, alpha=NAIL_ALPHA, blur=NAIL_BLUR)
             else:
                 print("No nails detected that contain fingertips. Skipping nail painting.")
         else:
