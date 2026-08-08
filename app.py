@@ -48,6 +48,7 @@ TARGET_HSV = np.array([0, 255, 255], dtype=np.float32)
 
 
 # Configuration
+image_data = "IMG_3051.JPG"
 URL = "https://serverless.roboflow.com/thanh-khiem-nguyen/nails_segmentation-m8ew1-1-rfdetr-seg-large-t1"
 PARAMS = {"api_key": os.getenv("ROBOFLOW_API_KEY", ""), "confidence": YOLO_CONFIDENCE_THRESHOLD}
 
@@ -355,4 +356,10 @@ def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_m
         return image_bytes, False
 
 
+def main():
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
+
+if __name__ == "__main__":
+    main()
