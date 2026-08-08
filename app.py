@@ -44,6 +44,12 @@ MAX_PROCESS_FPS = int(os.getenv("MAX_PROCESS_FPS", "20"))
 NO_HAND_COOLDOWN = float(os.getenv("NO_HAND_COOLDOWN", "1.0"))
 ROBOFLOW_MAX_DIM = int(os.getenv("ROBOFLOW_MAX_DIM", "640"))
 
+# Beautification / retouching
+BEAUTIFY_ENABLED = os.getenv("BEAUTIFY_ENABLED", "true").lower() in ("1", "true", "yes")
+BEAUTIFY_STRENGTH = float(os.getenv("BEAUTIFY_STRENGTH", "0.5"))  # CLAHE / contrast blend
+BEAUTIFY_SATURATION = float(os.getenv("BEAUTIFY_SATURATION", "1.2"))  # HSV saturation multiplier
+BEAUTIFY_SKIN_SMOOTHING = float(os.getenv("BEAUTIFY_SKIN_SMOOTHING", "0.4"))  # 0 = off, 1 = full
+
 TARGET_HSV = np.array([0, 255, 255], dtype=np.float32)
 
 
@@ -117,6 +123,76 @@ def _detect_nails(image_source: Union[str, bytes], max_dim: int = 0):
     return result
 
 
+def _beautify_image(
+    bgr: np.ndarray,
+    strength: float = BEAUTIFY_STRENGTH,
+    saturation: float = BEAUTIFY_SATURATION,
+    skin_smoothing: float = BEAUTIFY_SKIN_SMOOTHING,
+) -> np.ndarray:
+    """Apply lightweight retouching to make the image look more polished.
+
+    The pipeline is designed to be fast enough for real-time video (≤ 20 FPS):
+
+    1. **CLAHE** on the LAB luminance channel – boosts local contrast and
+       brings out detail in shadows/highlights without blowing out skin.
+    2. **Saturation / vibrance** boost in HSV – makes colours pop.
+    3. **Skin smoothing** – a skin-tone mask (HSV range) is used to apply a
+       bilateral filter *only* on skin pixels, preserving edge detail on
+       nails, cuticles and the background.
+
+    Args:
+        bgr: BGR uint8 image array.
+        strength: Blend factor for CLAHE (0 = original, 1 = full CLAHE).
+        saturation: Multiplier for the HSV saturation channel (1.0 = no change).
+        skin_smoothing: Blend factor for skin smoothing (0 = off).
+
+    Returns:
+        Beautified BGR uint8 array.
+    """
+    img = bgr.copy()
+
+    # ── 1. Contrast / detail enhancement (CLAHE on luminance) ──────
+    if strength > 0:
+        lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+        l_ch, a_ch, b_ch = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l_eq = clahe.apply(l_ch)
+        lab_eq = cv2.merge([l_eq, a_ch, b_ch])
+        enhanced = cv2.cvtColor(lab_eq, cv2.COLOR_LAB2BGR)
+        img = cv2.addWeighted(img, 1.0 - strength, enhanced, strength, 0)
+
+    # ── 2. Saturation / vibrance boost ──────────────────────────────
+    if saturation != 1.0:
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.float32)
+        hsv[:, :, 1] = np.clip(hsv[:, :, 1] * saturation, 0, 255)
+        img = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+    # ── 3. Skin smoothing (bilateral filter on skin-tone mask) ────
+    if skin_smoothing > 0:
+        hsv_skin = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+
+        # Hand skin tones: reddish / yellowish, moderate saturation/value.
+        # Two ranges cover light-to-olive tones without catching nail polish.
+        lower1 = np.array([0, 20, 50], dtype=np.uint8)
+        upper1 = np.array([20, 180, 255], dtype=np.uint8)
+        lower2 = np.array([160, 20, 50], dtype=np.uint8)
+        upper2 = np.array([180, 180, 255], dtype=np.uint8)
+        skin_mask = cv2.inRange(hsv_skin, lower1, upper1) | cv2.inRange(hsv_skin, lower2, upper2)
+
+        # Dilate slightly so smoothing covers the edges of the hand too.
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        skin_mask = cv2.dilate(skin_mask, kernel, iterations=1)
+
+        smoothed = cv2.bilateralFilter(img, d=9, sigmaColor=80, sigmaSpace=80)
+
+        mask_f = (skin_mask.astype(np.float32) / 255.0) * skin_smoothing
+        mask_3ch = np.stack([mask_f, mask_f, mask_f], axis=2)
+        img = (img.astype(np.float32) * (1.0 - mask_3ch) +
+               smoothed.astype(np.float32) * mask_3ch).astype(np.uint8)
+
+    return img
+
+
 def _apply_color_transfer(
     bgr: np.ndarray,
     mask: np.ndarray,
@@ -175,6 +251,14 @@ def _paint_nails(image_source: Union[str, bytes], result, color=RED, alpha: floa
             mask_np = cv2.GaussianBlur(mask_np, (ksize, ksize), sigmaX=blur)
         
         image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+
+        if BEAUTIFY_ENABLED:
+            image_bgr = _beautify_image(
+                image_bgr,
+                strength=BEAUTIFY_STRENGTH,
+                saturation=BEAUTIFY_SATURATION,
+                skin_smoothing=BEAUTIFY_SKIN_SMOOTHING,
+            )
 
         rgb_color = np.uint8([[color]])
         target_hsv = cv2.cvtColor(rgb_color, cv2.COLOR_RGB2HSV)[0][0].astype(np.float32)
