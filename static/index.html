@@ -34,7 +34,9 @@
             left: 0;
             width: 100vw;
             height: 100vh;
-            object-fit: contain;
+            height: 100dvh;
+            object-fit: cover;
+            object-position: center;
             background: #000;
             display: block;
         }
@@ -44,10 +46,13 @@
             left: 0;
             width: 100vw;
             height: 100vh;
+            height: 100dvh;
             object-fit: cover;
+            object-position: center;
             opacity: 0;
             pointer-events: none;
             z-index: -1;
+            display: block;
         }
         #status, #latency {
             position: fixed;
@@ -63,17 +68,23 @@
         /* Color palette bar */
         #colorBar {
             position: fixed;
+            left: 0;
+            right: 0;
             bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
             display: flex;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
             gap: 14px;
             padding: 12px 20px;
             background: rgba(0, 0, 0, 0.6);
             border-radius: 40px;
             z-index: 20;
             backdrop-filter: blur(8px);
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
         }
+        #colorBar::-webkit-scrollbar { display: none; }
         .color-bubble {
             width: 36px;
             height: 36px;
