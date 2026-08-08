@@ -70,16 +70,21 @@
             try {
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: {
-                        width: { ideal: 3840 },
-                        height: { ideal: 2160 },
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
                         facingMode: "environment"
                     }
                 });
                 video.srcObject = stream;
                 
                 const settings = stream.getVideoTracks()[0].getSettings();
-                const width = settings.width || 1920;
-                const height = settings.height || 1080;
+                const width = settings.width || 640;
+                const height = settings.height || 480;
+                
+                const maxDim = 640;
+                const scale = Math.min(1, maxDim / Math.max(width, height));
+                const canvasWidth = Math.round(width * scale);
+                const canvasHeight = Math.round(height * scale);
                 
                 const sessionId = generateUUID();
                 sessionIdEl.textContent = sessionId;
@@ -89,11 +94,11 @@
                 ws.binaryType = 'arraybuffer';
                 
                 ws.onopen = () => {
-                    statusEl.textContent = `Connected — ${width}x${height}`;
+                    statusEl.textContent = `Connected — ${canvasWidth}x${canvasHeight}`;
                     sending = true;
                     canvas = document.createElement('canvas');
-                    canvas.width = width;
-                    canvas.height = height;
+                    canvas.width = canvasWidth;
+                    canvas.height = canvasHeight;
                     ctx = canvas.getContext('2d');
                     sendFrames();
                 };
