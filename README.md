@@ -8,6 +8,7 @@ A real-time nail polish try-on web app built with FastAPI, MediaPipe, and RoBoFl
 - **Hand detection** using MediaPipe Hands
 - **Nail segmentation** using a RoBoFlow RF-DETR segmentation model
 - **Color transfer** to recolor detected nail regions while preserving texture
+- **Performance optimizations** for shared hosting: frame rate limiting, downscaled detection, and no-hand cooldown
 - **Configurable behavior** through environment variables
 
 ## Requirements
@@ -40,8 +41,22 @@ Then open [http://localhost:8000](http://localhost:8000).
 | `ROBOFLOW_API_KEY` | — | **Required.** RoBoFlow API key |
 | `NAIL_ALPHA` | `0.8` | Blend strength for color transfer |
 | `NAIL_BLUR` | `2` | Gaussian blur radius applied to the nail mask |
-| `SPACE_DETECTION_THRESHOLD` | `0.5` | Fingertip-to-nail distance threshold |
+| `SPACE_DETECTION_THRESHOLD` | `0.1` | Fingertip-to-nail distance threshold |
 | `YOLO_CONFIDENCE_THRESHOLD` | `0.5` | Minimum confidence for nail predictions |
+| `MAX_DETECTION_DIM` | `320` | Max pixel dimension for MediaPipe hand detection. Lower = faster. Set to `0` to disable. |
+| `MAX_PROCESS_FPS` | `20` | Max frames per second the server will process per WebSocket connection. |
+| `NO_HAND_COOLDOWN` | `1.0` | Seconds to skip processing after no hands are detected. |
+| `ROBOFLOW_MAX_DIM` | `640` | Max pixel dimension for images sent to the RoBoFlow API. Lower = faster API response. |
+
+## Performance
+
+The app is optimized for CPU-limited hosting (e.g., Render.com free tier):
+
+- **Frame rate limiting:** Each WebSocket connection is capped at `MAX_PROCESS_FPS` to avoid CPU saturation.
+- **Downscaled hand detection:** MediaPipe runs on a smaller image (`MAX_DETECTION_DIM`), then maps normalized coordinates back to the original frame.
+- **No-hand cooldown:** When no hands are detected, processing is skipped for `NO_HAND_COOLDOWN` seconds.
+- **Downscaled API requests:** Images sent to RoBoflow are resized to `ROBOFLOW_MAX_DIM`, then polygon coordinates are scaled back.
+- **Single image decode:** Each frame is decoded from JPEG bytes only once and reused across hand detection, API inference, and painting.
 
 ## Docker
 
@@ -53,6 +68,10 @@ docker run -p 8000:8000 \
   -e NAIL_BLUR=2 \
   -e SPACE_DETECTION_THRESHOLD=0.5 \
   -e YOLO_CONFIDENCE_THRESHOLD=0.5 \
+  -e MAX_DETECTION_DIM=320 \
+  -e MAX_PROCESS_FPS=20 \
+  -e NO_HAND_COOLDOWN=1.0 \
+  -e ROBOFLOW_MAX_DIM=640 \
   nail-try-on
 ```
 
