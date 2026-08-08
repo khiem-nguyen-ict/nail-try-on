@@ -59,6 +59,61 @@
         }
         #status { top: 20px; }
         #latency { top: 44px; font-size: 12px; }
+        
+        /* Color palette bar */
+        #colorBar {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 14px;
+            padding: 12px 20px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 40px;
+            z-index: 20;
+            backdrop-filter: blur(8px);
+        }
+        .color-bubble {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: transform 0.15s ease, border-color 0.15s ease;
+            flex-shrink: 0;
+        }
+        .color-bubble:hover {
+            transform: scale(1.15);
+        }
+        .color-bubble.selected {
+            border-color: #fff;
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.4);
+            transform: scale(1.1);
+        }
+        
+        /* Opacity slider bar */
+        #opacityBar {
+            position: fixed;
+            bottom: 90px;
+            left: 50%;
+            margin: 16px;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 20px;
+            z-index: 20;
+            backdrop-filter: blur(8px);
+            color: #fff;
+            font-size: 14px;
+        }
+        #opacityBar input[type="range"] {
+            width: 160px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -69,6 +124,26 @@
     
     <p id="status">Session ID: <span id="sessionId">-</span></p>
     <p id="latency"></p>
+    
+    <div id="colorBar">
+        <div class="color-bubble selected" data-color="#FF0000" style="background:#FF0000;" title="Red"></div>
+        <div class="color-bubble" data-color="#FF69B4" style="background:#FF69B4;" title="Pink"></div>
+        <div class="color-bubble" data-color="#800080" style="background:#800080;" title="Purple"></div>
+        <div class="color-bubble" data-color="#0000FF" style="background:#0000FF;" title="Blue"></div>
+        <div class="color-bubble" data-color="#00FFFF" style="background:#00FFFF;" title="Cyan"></div>
+        <div class="color-bubble" data-color="#00FF00" style="background:#00FF00;" title="Green"></div>
+        <div class="color-bubble" data-color="#FFFF00" style="background:#FFFF00;" title="Yellow"></div>
+        <div class="color-bubble" data-color="#FFA500" style="background:#FFA500;" title="Orange"></div>
+        <div class="color-bubble" data-color="#8B4513" style="background:#8B4513;" title="Brown"></div>
+        <div class="color-bubble" data-color="#000000" style="background:#000000;" title="Black"></div>
+        <div class="color-bubble" data-color="#FFFFFF" style="background:#FFFFFF;" title="White"></div>
+    </div>
+    
+    <div id="opacityBar">
+        <span id="opacityLabel">Opacity</span>
+        <input type="range" id="opacitySlider" min="0.1" max="0.8" step="0.1" value="0.4" />
+        <span id="opacityValue">40%</span>
+    </div>
     
     <script>
         const video = document.getElementById('video');
@@ -118,7 +193,7 @@
                 sessionIdEl.textContent = sessionId;
                 
                 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-                ws = new WebSocket(`${protocol}//${location.host}/ws/${sessionId}`);
+                ws = new WebSocket(`${protocol}//${location.host}/ws/${sessionId}?color=${encodeURIComponent(selectedColor)}&opacity=${defaultOpacity}`);
                 ws.binaryType = 'arraybuffer';
                 
                 ws.onopen = () => {
@@ -164,6 +239,37 @@
         }
         
         startBtn.addEventListener('click', startCamera);
+        
+        // Color palette logic
+        let selectedColor = '#FF0000';
+        let defaultOpacity = 0.4;
+        const bubbles = document.querySelectorAll('.color-bubble');
+        
+        bubbles.forEach(bubble => {
+            bubble.addEventListener('click', () => {
+                bubbles.forEach(b => b.classList.remove('selected'));
+                bubble.classList.add('selected');
+                selectedColor = bubble.getAttribute('data-color');
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'color', value: selectedColor }));
+                }
+            });
+        });
+        
+        // Opacity slider logic
+        const opacitySlider = document.getElementById('opacitySlider');
+        const opacityValueEl = document.getElementById('opacityValue');
+        
+        function updateOpacity(val) {
+            opacityValueEl.textContent = Math.round(val * 100) + '%';
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'opacity', value: parseFloat(val) }));
+            }
+        }
+        
+        opacitySlider.addEventListener('input', (e) => {
+            updateOpacity(e.target.value);
+        });
         
         async function sendFrames() {
             if (!sending || !ws || ws.readyState !== WebSocket.OPEN) return;
