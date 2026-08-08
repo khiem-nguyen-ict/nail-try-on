@@ -88,7 +88,7 @@ def _detect_nails(image_source: Union[str, bytes], max_dim: int = 0):
             with ImageOps.exif_transpose(Image.open(BytesIO(image_bytes))) as src:
                 resized = src.convert("RGB").resize((new_w, new_h), Image.Resampling.LANCZOS)
             buf = BytesIO()
-            resized.save(buf, format="WEBP", quality=100)
+            resized.save(buf, format="JPEG", quality=100)
             send_bytes = buf.getvalue()
 
     base64_encoded = base64.b64encode(send_bytes)
@@ -136,12 +136,17 @@ def _apply_color_transfer(
     return result
 
 
-def _paint_nails(image_source: Union[str, bytes], result, color=RED, alpha: float = 1.0, blur: int = 0, preloaded_image: Union[Image.Image, None] = None):
+def _paint_nails(image_source: Union[str, bytes], regions, color=RED, alpha: float = 1.0, blur: int = 0, preloaded_image: Union[Image.Image, None] = None):
     """Paint detected nail regions on the image with ``color``.
 
     Args:
         image_source: Path to the source image file or JPEG bytes.
-        result: Inference result dict returned by the RoBoFlow API.
+        regions: List of detected nail regions.
+        color: Color to use for painting.
+        alpha: Opacity of the painted regions.
+        blur: Blur radius for the painted regions.
+        preloaded_image: Optional pre-decoded PIL Image to avoid
+            re-reading ``image_source``.
         preloaded_image: Optional pre-decoded PIL Image to avoid
             re-reading ``image_source``.
     """
@@ -152,42 +157,39 @@ def _paint_nails(image_source: Union[str, bytes], result, color=RED, alpha: floa
     else:
         image = ImageOps.exif_transpose(Image.open(image_source)).convert("RGB")
 
-    predictions = (result or {}).get("predictions", [])
+    image_np = np.array(image)
+    h, w = image_np.shape[:2]
+
+    mask = Image.new("L", (w, h), 0)
+    draw_mask = ImageDraw.Draw(mask)
+
+    for pred in regions:
+        points = pred.get("points")
+        if not points:
+            continue
+        polygon = [(float(p["x"]), float(p["y"])) for p in points]
+        draw_mask.polygon(polygon, fill=255)
     
-    if predictions:
-        image_np = np.array(image)
-        h, w = image_np.shape[:2]
-
-        mask = Image.new("L", (w, h), 0)
-        draw_mask = ImageDraw.Draw(mask)
-
-        for pred in predictions:
-            points = pred.get("points")
-            if not points:
-                continue
-            polygon = [(float(p["x"]), float(p["y"])) for p in points]
-            draw_mask.polygon(polygon, fill=255)
-        
-        mask_np = np.array(mask)
-        
-        if blur > 0:
-            ksize = 2 * int(blur) + 1
-            mask_np = cv2.GaussianBlur(mask_np, (ksize, ksize), sigmaX=blur)
-        
-        image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
-
-        rgb_color = np.uint8([[color]])
-        target_hsv = cv2.cvtColor(rgb_color, cv2.COLOR_RGB2HSV)[0][0].astype(np.float32)
-
-        painted_bgr = _apply_color_transfer(image_bgr, mask_np, target_hsv, alpha=alpha)
-        painted_rgb = cv2.cvtColor(painted_bgr, cv2.COLOR_BGR2RGB)
-        image = Image.fromarray(painted_rgb)
+    mask_np = np.array(mask)
     
-        if isinstance(image_source, bytes):
-            buf = BytesIO()
-            image.save(buf, format="WEBP", quality=100)
-            return buf.getvalue()
+    if blur > 0:
+        ksize = 2 * int(blur) + 1
+        mask_np = cv2.GaussianBlur(mask_np, (ksize, ksize), sigmaX=blur)
     
+    image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+
+    rgb_color = np.uint8([[color]])
+    target_hsv = cv2.cvtColor(rgb_color, cv2.COLOR_RGB2HSV)[0][0].astype(np.float32)
+
+    painted_bgr = _apply_color_transfer(image_bgr, mask_np, target_hsv, alpha=alpha)
+    painted_rgb = cv2.cvtColor(painted_bgr, cv2.COLOR_BGR2RGB)
+    image = Image.fromarray(painted_rgb)
+
+    if isinstance(image_source, bytes):
+        buf = BytesIO()
+        image.save(buf, format="JPEG", quality=100)
+        return buf.getvalue()
+
     return image
 
 
@@ -250,7 +252,7 @@ def _detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_i
 
             output.append(hand_entry)
 
-    return json.dumps(output, indent=2)
+    return output
 
 
 def _point_in_polygon(x, y, polygon, width, height):
@@ -267,7 +269,7 @@ def _point_in_polygon(x, y, polygon, width, height):
 def _filter_nails_by_hands(nails_result, hands_data, width, height):
     """Filter nail predictions to only those containing at least one fingertip."""
     if not hands_data:
-        return {"predictions": []}
+        return []
 
     fingertips_px = []
     for hand in hands_data:
@@ -290,14 +292,14 @@ def _filter_nails_by_hands(nails_result, hands_data, width, height):
         if contained:
             filtered.append(pred)
 
-    return {"predictions": filtered}
+    return filtered
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
     last_process_time = 0.0
     min_interval = 1.0 / MAX_PROCESS_FPS
-    skip_until = 0.0
+    skip_until = 0
 
     try:
         while True:
@@ -327,7 +329,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         except Exception:
             pass
 
-
 def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_max_dim: int):
     """Process a frame and return (processed_bytes, hands_found_bool)."""
     try:
@@ -335,22 +336,18 @@ def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_m
             image = img.convert("RGB")
             width, height = image.size
 
-        hands = _detect_hands(image_bytes, max_dim=max_dim, preloaded_image=image)
-        hands_data = json.loads(hands)
+        hands_data = _detect_hands(image_bytes, max_dim=max_dim, preloaded_image=image)
 
         if hands_data and len(hands_data) > 0:
             nails = _detect_nails(image_bytes, max_dim=roboflow_max_dim)
 
-            filtered_nails = _filter_nails_by_hands(nails, hands_data, width, height)
-
-            predictions = filtered_nails.get("predictions", [])
-            if predictions:
-                result = _paint_nails(image_bytes, filtered_nails, alpha=NAIL_ALPHA, blur=NAIL_BLUR, preloaded_image=image)
+            predictions = _filter_nails_by_hands(nails, hands_data, width, height)
+            if predictions and len(predictions) > 0:
+                result = _paint_nails(image_bytes, predictions, alpha=NAIL_ALPHA, blur=NAIL_BLUR, preloaded_image=image)
                 if isinstance(result, bytes):
                     return result, True
-            return image_bytes, True
-        else:
-            return image_bytes, False
+                    
+        return image_bytes, False
     except Exception:
         return image_bytes, False
 
