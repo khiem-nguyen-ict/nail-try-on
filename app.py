@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import sys
+import time
 from io import BytesIO
 from typing import Union
 
@@ -39,6 +40,8 @@ NAIL_ALPHA = float(os.getenv("NAIL_ALPHA", "0.8"))
 NAIL_BLUR = int(os.getenv("NAIL_BLUR", "2"))
 SPACE_DETECTION_THRESHOLD = float(os.getenv("SPACE_DETECTION_THRESHOLD", "0.1"))
 YOLO_CONFIDENCE_THRESHOLD = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", "0.5"))
+MAX_DETECTION_DIM = int(os.getenv("MAX_DETECTION_DIM", "320"))
+MAX_PROCESS_FPS = int(os.getenv("MAX_PROCESS_FPS", "20"))
 
 TARGET_HSV = np.array([0, 255, 255], dtype=np.float32)
 
@@ -50,7 +53,7 @@ PARAMS = {"api_key": os.getenv("ROBOFLOW_API_KEY", ""), "confidence": YOLO_CONFI
 
 mp_hands = mp.solutions.hands
 hands_detector = mp_hands.Hands(
-    static_image_mode=True,
+    static_image_mode=False,
     max_num_hands=4,
     model_complexity=0,
     min_detection_confidence=0.5
@@ -163,11 +166,14 @@ def paint_nails(image_source: Union[str, bytes], result, output_path=None, color
     return image
 
 
-def detect_hands(image_source: Union[str, bytes]):
+def detect_hands(image_source: Union[str, bytes], max_dim: int = 0):
     """Detect hands in an image and return finger tips in JSON format.
 
     Args:
         image_source: Path to the image file or JPEG bytes.
+        max_dim: Maximum dimension for the image used for detection.
+            Smaller values are faster but may reduce accuracy.
+            When 0 (default), no downscaling is applied.
 
     Returns:
         A JSON string representing a list of detected hands.
@@ -178,6 +184,15 @@ def detect_hands(image_source: Union[str, bytes]):
         image = ImageOps.exif_transpose(Image.open(image_source))
     if image.mode != "RGB":
         image = image.convert("RGB")
+
+    # Downscale for faster detection
+    if max_dim > 0:
+        w, h = image.size
+        scale = min(1.0, max_dim / max(w, h))
+        if scale < 1.0:
+            new_w, new_h = int(w * scale), int(h * scale)
+            image = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
     image_np = np.array(image)
 
     results = hands_detector.process(image_np)
@@ -248,10 +263,10 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
     return {"predictions": filtered}
 
 
-def process_frame(image_bytes: bytes) -> bytes:
+def process_frame(image_bytes: bytes, max_dim: int = MAX_DETECTION_DIM) -> bytes:
     """Process a single frame using the same logic as the original main()."""
     try:
-        hands = detect_hands(image_bytes)
+        hands = detect_hands(image_bytes, max_dim=max_dim)
         hands_data = json.loads(hands)
 
         if hands_data and len(hands_data) > 0:
@@ -279,11 +294,18 @@ def process_frame(image_bytes: bytes) -> bytes:
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
-    
+    last_process_time = 0.0
+    min_interval = 1.0 / MAX_PROCESS_FPS
+
     try:
         while True:
             data = await websocket.receive_bytes()
-            processed = await asyncio.to_thread(process_frame, data)
+            now = time.time()
+            if now - last_process_time < min_interval:
+                await websocket.send_bytes(data)
+                continue
+            last_process_time = now
+            processed = await asyncio.to_thread(process_frame, data, MAX_DETECTION_DIM)
             await websocket.send_bytes(processed)
     except WebSocketDisconnect:
         pass
