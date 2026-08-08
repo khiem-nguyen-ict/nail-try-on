@@ -36,7 +36,7 @@ async def get_index():
 # Default fill color: solid red.
 RED = (255, 0, 0)
 NAIL_ALPHA = float(os.getenv("NAIL_ALPHA", "0.8"))
-NAIL_BLUR = int(os.getenv("NAIL_BLUR", "2"))
+NAIL_BLUR = int(os.getenv("NAIL_BLUR", "1"))
 SPACE_DETECTION_THRESHOLD = float(os.getenv("SPACE_DETECTION_THRESHOLD", "0.1"))
 YOLO_CONFIDENCE_THRESHOLD = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", "0.5"))
 MAX_DETECTION_DIM = int(os.getenv("MAX_DETECTION_DIM", "320"))
@@ -48,22 +48,21 @@ TARGET_HSV = np.array([0, 255, 255], dtype=np.float32)
 
 
 # Configuration
-image_data = "IMG_3051.JPG"
 URL = "https://serverless.roboflow.com/thanh-khiem-nguyen/nails_segmentation-m8ew1-1-rfdetr-seg-large-t1"
 PARAMS = {"api_key": os.getenv("ROBOFLOW_API_KEY", ""), "confidence": YOLO_CONFIDENCE_THRESHOLD}
 
 mp_hands = mp.solutions.hands
 hands_detector = mp_hands.Hands(
     static_image_mode=False,
-    max_num_hands=4,
+    max_num_hands=2,
     model_complexity=0,
-    min_detection_confidence=0.5
+    min_detection_confidence=0.8
 )
 
 FINGERTIP_IDS = [4, 8, 12, 16, 20]
 
 
-def detect_nails(image_source: Union[str, bytes], max_dim: int = 0):
+def _detect_nails(image_source: Union[str, bytes], max_dim: int = 0):
     """Send image to the RoBoFlow API and return the inference result.
 
     Args:
@@ -89,7 +88,7 @@ def detect_nails(image_source: Union[str, bytes], max_dim: int = 0):
             with ImageOps.exif_transpose(Image.open(BytesIO(image_bytes))) as src:
                 resized = src.convert("RGB").resize((new_w, new_h), Image.Resampling.LANCZOS)
             buf = BytesIO()
-            resized.save(buf, format="JPEG", quality=85)
+            resized.save(buf, format="JPEG", quality=100)
             send_bytes = buf.getvalue()
 
     base64_encoded = base64.b64encode(send_bytes)
@@ -137,7 +136,7 @@ def _apply_color_transfer(
     return result
 
 
-def paint_nails(image_source: Union[str, bytes], result, color=RED, alpha: float = 1.0, blur: int = 0, preloaded_image: Union[Image.Image, None] = None):
+def _paint_nails(image_source: Union[str, bytes], result, color=RED, alpha: float = 1.0, blur: int = 0, preloaded_image: Union[Image.Image, None] = None):
     """Paint detected nail regions on the image with ``color``.
 
     Args:
@@ -192,7 +191,7 @@ def paint_nails(image_source: Union[str, bytes], result, color=RED, alpha: float
     return image
 
 
-def detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_image: Union[Image.Image, None] = None):
+def _detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_image: Union[Image.Image, None] = None):
     """Detect hands in an image and return finger tips in JSON format.
 
     Args:
@@ -254,7 +253,7 @@ def detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_im
     return json.dumps(output, indent=2)
 
 
-def point_in_polygon(x, y, polygon, width, height):
+def _point_in_polygon(x, y, polygon, width, height):
     """Check if point (x, y) is close to the center of polygon."""
     if not polygon:
         return False
@@ -265,7 +264,7 @@ def point_in_polygon(x, y, polygon, width, height):
     return distance < threshold
 
 
-def filter_nails_by_hands(nails_result, hands_data, width, height):
+def _filter_nails_by_hands(nails_result, hands_data, width, height):
     """Filter nail predictions to only those containing at least one fingertip."""
     if not hands_data:
         return {"predictions": []}
@@ -284,7 +283,7 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
 
         contained = False
         for fx, fy in fingertips_px:
-            if point_in_polygon(fx, fy, polygon, width, height):
+            if _point_in_polygon(fx, fy, polygon, width, height):
                 contained = True
                 break
 
@@ -336,17 +335,17 @@ def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_m
             image = img.convert("RGB")
             width, height = image.size
 
-        hands = detect_hands(image_bytes, max_dim=max_dim, preloaded_image=image)
+        hands = _detect_hands(image_bytes, max_dim=max_dim, preloaded_image=image)
         hands_data = json.loads(hands)
 
         if hands_data and len(hands_data) > 0:
-            nails = detect_nails(image_bytes, max_dim=roboflow_max_dim)
+            nails = _detect_nails(image_bytes, max_dim=roboflow_max_dim)
 
-            filtered_nails = filter_nails_by_hands(nails, hands_data, width, height)
+            filtered_nails = _filter_nails_by_hands(nails, hands_data, width, height)
 
             predictions = filtered_nails.get("predictions", [])
             if predictions:
-                result = paint_nails(image_bytes, filtered_nails, alpha=NAIL_ALPHA, blur=NAIL_BLUR, preloaded_image=image)
+                result = _paint_nails(image_bytes, filtered_nails, alpha=NAIL_ALPHA, blur=NAIL_BLUR, preloaded_image=image)
                 if isinstance(result, bytes):
                     return result, True
             return image_bytes, True
