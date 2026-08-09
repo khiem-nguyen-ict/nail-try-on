@@ -13,13 +13,13 @@ A real-time nail polish try-on web app built with FastAPI, MediaPipe, and RoBoFl
 
 ## Requirements
 
-- Python 3.12+
+- Python 3.11+
 - A [RoBoFlow API key](https://app.roboflow.com/)
 
 ## Setup
 
 ```bash
-python3.12 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
