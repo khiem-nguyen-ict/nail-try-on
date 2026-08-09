@@ -47,7 +47,10 @@ The app works on mobile browsers. Notable behavior on iPhone / Safari (portrait)
   reachable on narrow portrait viewports by scrolling sideways.
 - The camera uses `playsinline` (`webkit-playsinline`), so the live feed stays
   in the page instead of launching the fullscreen native player. Tap
-  `Start Camera` and grant camera permission when prompted.
+  **Try It On** and grant camera permission when prompted.
+- On mobile/tablet devices only, a flip-camera button (top-right corner) lets
+  you toggle between the rear and front cameras. The active WebSocket session
+  is reused, so your color/opacity settings are preserved across switches.
 
 The frontend is a single static file at `static/index.html`, served by the
 FastAPI app at `/`.
