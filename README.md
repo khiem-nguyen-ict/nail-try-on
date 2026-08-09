@@ -131,13 +131,12 @@ dependencies (notably `mediapipe` + `opencv-python-headless` + `numpy`) exceed
 that limit, so deploying with Vercel’s Python runtime will fail.
 
 To deploy on Vercel, use **Vercel Docker / Container deployment** instead.
-The included `vercel.json` tells Vercel to build from the existing `Dockerfile`,
-which bypasses the Serverless Function bundle limit.
+Vercel will auto-detect the `Dockerfile` in the repo root when the framework
+preset is set to Docker during import.
 
 1. Push this repo to GitHub.
 2. Import the project on [Vercel](https://vercel.com).
-3. In the project settings, make sure the **Framework Preset** is set to
-   **Docker** (or let Vercel auto-detect from `vercel.json`).
+3. During import, set the **Framework Preset** to **Docker**.
 4. Add `ROBOFLOW_API_KEY` in the Vercel Environment Variables dashboard.
 5. Deploy.
 
