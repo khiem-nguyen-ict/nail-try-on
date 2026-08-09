@@ -375,7 +375,7 @@ def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_m
         with ImageOps.exif_transpose(Image.open(BytesIO(image_bytes))) as img:
             image = img.convert("RGB")
             width, height = image.size
-
+        
         hands_data = _detect_hands(image_bytes, max_dim=max_dim, preloaded_image=image)
 
         if hands_data and len(hands_data) > 0:

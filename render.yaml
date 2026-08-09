@@ -11,7 +11,7 @@ services:
       - key: NAIL_BLUR
         value: 2
       - key: SPACE_DETECTION_THRESHOLD
-        value: 0.5
+        value: 0.1
       - key: YOLO_CONFIDENCE_THRESHOLD
         value: 0.5
       - key: MAX_DETECTION_DIM
