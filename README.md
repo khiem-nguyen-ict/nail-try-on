@@ -34,6 +34,24 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 
 Then open [http://localhost:8000](http://localhost:8000).
 
+## Mobile Support
+
+The app works on mobile browsers. Notable behavior on iPhone / Safari (portrait):
+
+- The video feed (`#output`) fills the entire screen using `object-fit: cover`
+  and `height: 100dvh`, so it stays centered and edge-to-edge even while the
+  Safari address bar shows and hides (no more low-ratio, bottom-stuck
+  "thumbnail").
+- The color palette (`#colorBar`) is a full-width, horizontally scrollable bar
+  (native momentum scrolling with a hidden scrollbar). All 11 color swatches are
+  reachable on narrow portrait viewports by scrolling sideways.
+- The camera uses `playsinline` (`webkit-playsinline`), so the live feed stays
+  in the page instead of launching the fullscreen native player. Tap
+  `Start Camera` and grant camera permission when prompted.
+
+The frontend is a single static file at `static/index.html`, served by the
+FastAPI app at `/`.
+
 ## Environment Variables
 
 | Variable | Default | Description |
