@@ -13,13 +13,13 @@ A real-time nail polish try-on web app built with FastAPI, MediaPipe, and RoBoFl
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.12+
 - A [RoBoFlow API key](https://app.roboflow.com/)
 
 ## Setup
 
 ```bash
-python -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
@@ -68,6 +68,28 @@ FastAPI app at `/`.
 | `MAX_PROCESS_FPS` | `20` | Max frames per second the server will process per WebSocket connection. |
 | `NO_HAND_COOLDOWN` | `1.0` | Seconds to skip processing after no hands are detected. |
 | `ROBOFLOW_MAX_DIM` | `1024` | Max pixel dimension for images sent to the RoBoFlow API. Lower = faster API response. |
+
+## Processing Workflow
+
+Each frame from the browser WebSocket goes through this pipeline:
+
+1. **Receive frame** — The browser sends a JPEG frame over `/ws/{session_id}`.
+2. **Decode once** — The frame is decoded from JPEG bytes into a PIL Image.
+3. **Hand detection** — MediaPipe Hands runs on a downscaled version of the frame
+   (`MAX_DETECTION_DIM`) to detect hands and extract fingertip landmarks.
+4. **Nail segmentation** — If hands are detected, the full frame is sent to the
+   RoBoFlow RF-DETR segmentation model, which returns nail region polygons.
+5. **Filter by proximity** — Only nail predictions that contain at least one
+   fingertip are kept, using a configurable distance threshold
+   (`SPACE_DETECTION_THRESHOLD`).
+6. **Paint nails** — The selected nail regions are recolored using OpenCV color
+   transfer (HSV hue replacement) with configurable opacity (`NAIL_ALPHA`)
+   and blur (`NAIL_BLUR`).
+7. **Stream back** — The processed JPEG is sent back to the browser over the
+   same WebSocket.
+
+If no hands are detected, the original frame is returned immediately and
+processing is skipped for `NO_HAND_COOLDOWN` seconds to save CPU.
 
 ## Performance
 
