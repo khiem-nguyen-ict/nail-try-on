@@ -42,7 +42,7 @@ YOLO_CONFIDENCE_THRESHOLD = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", "0.5"))
 MAX_DETECTION_DIM = int(os.getenv("MAX_DETECTION_DIM", "320"))
 MAX_PROCESS_FPS = int(os.getenv("MAX_PROCESS_FPS", "20"))
 NO_HAND_COOLDOWN = float(os.getenv("NO_HAND_COOLDOWN", "1.0"))
-ROBOFLOW_MAX_DIM = int(os.getenv("ROBOFLOW_MAX_DIM", "640"))
+ROBOFLOW_MAX_DIM = int(os.getenv("ROBOFLOW_MAX_DIM", "1024"))
 
 TARGET_HSV = np.array([0, 255, 255], dtype=np.float32)
 
