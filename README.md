@@ -73,6 +73,7 @@ FastAPI app at `/`.
 
 The app is optimized for CPU-limited hosting (e.g., Render.com free tier):
 
+- **Frontend frame cap:** The browser is capped at `MAX_SEND_FPS` (10 FPS) so the client does not flood the WebSocket faster than the server can process.
 - **Frame rate limiting:** Each WebSocket connection is capped at `MAX_PROCESS_FPS` to avoid CPU saturation.
 - **Downscaled hand detection:** MediaPipe runs on a smaller image (`MAX_DETECTION_DIM`), then maps normalized coordinates back to the original frame.
 - **No-hand cooldown:** When no hands are detected, processing is skipped for `NO_HAND_COOLDOWN` seconds.
@@ -87,7 +88,7 @@ docker run -p 8000:8000 \
   -e ROBOFLOW_API_KEY=<your-key> \
   -e NAIL_ALPHA=0.8 \
   -e NAIL_BLUR=2 \
-  -e SPACE_DETECTION_THRESHOLD=0.5 \
+  -e SPACE_DETECTION_THRESHOLD=0.1 \
   -e YOLO_CONFIDENCE_THRESHOLD=0.5 \
   -e MAX_DETECTION_DIM=320 \
   -e MAX_PROCESS_FPS=20 \
