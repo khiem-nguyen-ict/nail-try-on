@@ -191,15 +191,6 @@
                 });
                 video.srcObject = stream;
                 
-                const settings = stream.getVideoTracks()[0].getSettings();
-                const width = settings.width || 640;
-                const height = settings.height || 480;
-                
-                const maxDim = 640;
-                const scale = Math.min(1, maxDim / Math.max(width, height));
-                const canvasWidth = Math.round(width * scale);
-                const canvasHeight = Math.round(height * scale);
-                
                 const sessionId = generateUUID();
                 sessionIdEl.textContent = sessionId;
                 
@@ -208,11 +199,11 @@
                 ws.binaryType = 'arraybuffer';
                 
                 ws.onopen = () => {
-                    statusEl.textContent = `Connected — ${canvasWidth}x${canvasHeight}`;
+                    statusEl.textContent = 'Connected';
                     sending = true;
                     canvas = document.createElement('canvas');
-                    canvas.width = canvasWidth;
-                    canvas.height = canvasHeight;
+                    canvas.width = 1;
+                    canvas.height = 1;
                     ctx = canvas.getContext('2d');
                     sendFrames();
                 };
@@ -282,6 +273,45 @@
             updateOpacity(e.target.value);
         });
         
+        let captureGeo = null;
+        const MAX_CAPTURE_DIM = 640;
+        
+        // Compute the portion of the video frame that is actually visible
+        // through #output's object-fit:cover (i.e. the center-cropped region
+        // that fills the screen). Only this rectangle is sent to the backend,
+        // so the processed result matches exactly what the user sees and the
+        // hidden sides of the camera feed are never transmitted.
+        function computeCaptureGeometry() {
+            const vw = video.videoWidth, vh = video.videoHeight;
+            if (!vw || !vh) return null;
+            const box = output.getBoundingClientRect();
+            const dw = Math.round(box.width), dh = Math.round(box.height);
+            if (!dw || !dh) return null;
+            
+            const videoAspect = vw / vh;
+            const viewAspect = dw / dh;
+            let sx, sy, sw, sh;
+            if (videoAspect > viewAspect) {
+                // Video is wider than the viewport: crop the left/right edges.
+                sh = vh;
+                sw = Math.round(vh * viewAspect);
+                sx = Math.round((vw - sw) / 2);
+                sy = 0;
+            } else {
+                // Video is taller than the viewport: crop the top/bottom edges.
+                sw = vw;
+                sh = Math.round(vw / viewAspect);
+                sx = 0;
+                sy = Math.round((vh - sh) / 2);
+            }
+            
+            // Downscale the visible region for the backend; never upscale.
+            const scale = Math.min(1, MAX_CAPTURE_DIM / Math.max(sw, sh));
+            const cw = Math.round(sw * scale);
+            const ch = Math.round(sh * scale);
+            return { sx, sy, sw, sh, cw, ch };
+        }
+        
         async function sendFrames() {
             if (!sending || !ws || ws.readyState !== WebSocket.OPEN) return;
             if (processing) {
@@ -289,8 +319,26 @@
                 return;
             }
             
+            const geo = computeCaptureGeometry();
+            if (!geo) {
+                // Camera metadata not ready yet; retry shortly.
+                setTimeout(sendFrames, 50);
+                return;
+            }
+            
+            // Resize the canvas only when the visible region changes size
+            // (e.g. on orientation change or address-bar show/hide).
+            if (captureGeo === null || canvas.width !== geo.cw || canvas.height !== geo.ch) {
+                canvas.width = geo.cw;
+                canvas.height = geo.ch;
+                captureGeo = geo;
+                statusEl.textContent = `Connected — ${geo.cw}x${geo.ch}`;
+            }
+            
             processing = true;
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Draw only the visible (cover-cropped) portion of the video.
+            ctx.drawImage(video, geo.sx, geo.sy, geo.sw, geo.sh, 0, 0, canvas.width, canvas.height);
             
             try {
                 const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/JPEG', 1));
