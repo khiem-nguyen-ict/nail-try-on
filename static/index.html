@@ -28,6 +28,22 @@
             z-index: 10;
         }
         #startBtn.hidden { display: none; }
+        #switchCamBtn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-size: 22px;
+            cursor: pointer;
+            z-index: 30;
+            backdrop-filter: blur(8px);
+            display: none;
+        }
         #output {
             position: fixed;
             top: 0;
@@ -129,7 +145,8 @@
 </head>
 <body>
     <h1>Nail Try-On</h1>
-    <button id="startBtn">Start Camera</button>
+    <button id="startBtn">Try It On</button>
+    <button id="switchCamBtn" aria-label="Switch camera">⇄</button>
     <img id="output" />
     <video id="video" autoplay playsinline webkit-playsinline></video>
     
@@ -151,7 +168,6 @@
     </div>
     
     <div id="opacityBar">
-        <span id="opacityLabel">Opacity</span>
         <input type="range" id="opacitySlider" min="0.1" max="0.8" step="0.1" value="0.4" />
         <span id="opacityValue">40%</span>
     </div>
@@ -163,9 +179,11 @@
         const sessionIdEl = document.getElementById('sessionId');
         const latencyEl = document.getElementById('latency');
         const startBtn = document.getElementById('startBtn');
+        const switchCamBtn = document.getElementById('switchCamBtn');
         
         let ws = null;
         let stream = null;
+        let facingMode = 'environment';
         let canvas = null;
         let ctx = null;
         let sending = false;
@@ -180,67 +198,103 @@
             });
         }
         
+        function isMobileOrTablet() {
+            return /Android|iPhone|iPad|iPod|Windows Phone|Tablet|Mobile/i.test(navigator.userAgent)
+                || (navigator.maxTouchPoints > 0);
+        }
+
+        async function acquireCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: facingMode
+                }
+            });
+            video.srcObject = stream;
+            // Invalidate cached geometry so it recomputes for the new source.
+            captureGeo = null;
+        }
+
+        function setupWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) return;
+            const sessionId = generateUUID();
+            sessionIdEl.textContent = sessionId;
+
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${location.host}/ws/${sessionId}?color=${encodeURIComponent(selectedColor)}&opacity=${defaultOpacity}`);
+            ws.binaryType = 'arraybuffer';
+
+            ws.onopen = () => {
+                statusEl.textContent = 'Connected';
+                sending = true;
+                canvas = document.createElement('canvas');
+                canvas.width = 1;
+                canvas.height = 1;
+                ctx = canvas.getContext('2d');
+                sendFrames();
+            };
+
+            ws.onmessage = (event) => {
+                const blob = new Blob([event.data], { type: 'image/JPEG' });
+                output.src = URL.createObjectURL(blob);
+                processing = false;
+
+                const now = Date.now();
+                frameCount++;
+                if (now - lastFpsTime >= 1000) {
+                    latencyEl.textContent = `FPS: ${frameCount}`;
+                    frameCount = 0;
+                    lastFpsTime = now;
+                }
+            };
+
+            ws.onclose = () => {
+                statusEl.textContent = 'Disconnected';
+                sending = false;
+                processing = false;
+            };
+
+            ws.onerror = (err) => {
+                console.error('WebSocket error:', err);
+                statusEl.textContent = 'Connection error';
+            };
+        }
+
         async function startCamera() {
             try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        width: { ideal: 640 },
-                        height: { ideal: 480 },
-                        facingMode: "environment"
-                    }
-                });
-                video.srcObject = stream;
-                
-                const sessionId = generateUUID();
-                sessionIdEl.textContent = sessionId;
-                
-                const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-                ws = new WebSocket(`${protocol}//${location.host}/ws/${sessionId}?color=${encodeURIComponent(selectedColor)}&opacity=${defaultOpacity}`);
-                ws.binaryType = 'arraybuffer';
-                
-                ws.onopen = () => {
-                    statusEl.textContent = 'Connected';
-                    sending = true;
-                    canvas = document.createElement('canvas');
-                    canvas.width = 1;
-                    canvas.height = 1;
-                    ctx = canvas.getContext('2d');
-                    sendFrames();
-                };
-                
-                ws.onmessage = (event) => {
-                    const blob = new Blob([event.data], { type: 'image/JPEG' });
-                    output.src = URL.createObjectURL(blob);
-                    processing = false;
-                    
-                    const now = Date.now();
-                    frameCount++;
-                    if (now - lastFpsTime >= 1000) {
-                        latencyEl.textContent = `FPS: ${frameCount}`;
-                        frameCount = 0;
-                        lastFpsTime = now;
-                    }
-                };
-                
-                ws.onclose = () => {
-                    statusEl.textContent = 'Disconnected';
-                    sending = false;
-                    processing = false;
-                };
-                
-                ws.onerror = (err) => {
-                    console.error('WebSocket error:', err);
-                    statusEl.textContent = 'Connection error';
-                };
-                
+                await acquireCamera();
+                setupWebSocket();
                 startBtn.classList.add('hidden');
             } catch (err) {
                 console.error('Camera error:', err);
                 statusEl.textContent = 'Camera access denied or unavailable';
             }
         }
-        
+
+        async function switchCamera() {
+            facingMode = facingMode === 'environment' ? 'user' : 'environment';
+            try {
+                await acquireCamera();
+            } catch (err) {
+                console.error('Camera switch error:', err);
+                statusEl.textContent = 'Camera switch unavailable';
+            }
+        }
+
         startBtn.addEventListener('click', startCamera);
+        if (switchCamBtn) {
+            switchCamBtn.addEventListener('click', switchCamera);
+        }
+
+        // Only show the switch-camera button on mobile/tablet devices.
+        if (isMobileOrTablet()) {
+            switchCamBtn.style.display = 'flex';
+        }
         
         // Color palette logic
         let selectedColor = '#FF0000';
