@@ -55,8 +55,9 @@ mp_hands = mp.solutions.hands
 hands_detector = mp_hands.Hands(
     static_image_mode=False,
     max_num_hands=2,
-    model_complexity=0,
-    min_detection_confidence=0.8
+    model_complexity=1,           
+    min_detection_confidence=0.95, 
+    min_tracking_confidence=0.95   
 )
 
 FINGERTIP_IDS = [4, 8, 12, 16, 20]
@@ -208,6 +209,22 @@ def _paint_nails(image_source: Union[str, bytes], regions, color=RED, alpha: flo
     return image
 
 
+import json
+from io import BytesIO
+from typing import Union
+import cv2
+import numpy as np
+from PIL import Image, ImageOps
+
+# Ensure FINGERTIP_IDS is defined (4: Thumb, 8: Index, 12: Middle, 16: Ring, 20: Pinky)
+FINGERTIP_IDS = [4, 8, 12, 16, 20]
+
+def _is_sharp(image_np: np.ndarray, threshold: float = 80.0) -> bool:
+    """Layer 1: Check image sharpness using Laplacian Variance."""
+    gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+    variance = cv2.Laplacian(gray, cv2.CV_64F).var()
+    return variance >= threshold
+
 def _detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_image: Union[Image.Image, None] = None):
     """Detect hands in an image and return finger tips in JSON format.
 
@@ -220,7 +237,7 @@ def _detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_i
             re-reading ``image_source``.
 
     Returns:
-        A JSON string representing a list of detected hands.
+        A list of dicts representing detected hands and visible nail fingertips.
     """
     if preloaded_image is not None:
         image = preloaded_image
@@ -242,30 +259,90 @@ def _detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_i
 
     image_np = np.array(detection_image)
 
+    # FILTER LAYER 1: Check image sharpness. Return empty if blurry.
+    if not _is_sharp(image_np, threshold=80.0):
+        return []
+
     results = hands_detector.process(image_np)
 
     output = []
     if results.multi_hand_landmarks:
         for idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
-            hand_entry = {
-                "hand_index": idx,
-                "handedness": None,
-                "fingertips": []
-            }
+            landmarks = hand_landmarks.landmark
 
+            # Extract handedness label (Left/Right)
+            handedness_label = None
             if results.multi_handedness and idx < len(results.multi_handedness):
-                hand_entry["handedness"] = results.multi_handedness[idx].classification[0].label
+                handedness_label = results.multi_handedness[idx].classification[0].label
 
-            for lm_id in FINGERTIP_IDS:
-                lm = hand_landmarks.landmark[lm_id]
-                hand_entry["fingertips"].append({
-                    "landmark_id": lm_id,
+            # FILTER LAYERS 2 & 3: Calculate nail orientation using 2D Cross Product
+            def get_pt(lm_id):
+                return np.array([landmarks[lm_id].x, landmarks[lm_id].y])
+
+            wrist = get_pt(0)
+            index_mcp = get_pt(5)
+            pinky_mcp = get_pt(17)
+
+            v_h1 = index_mcp - wrist
+            v_h2 = pinky_mcp - wrist
+            cross_hand = v_h1[0] * v_h2[1] - v_h1[1] * v_h2[0]
+
+            # Check if the back of the hand is facing the camera
+            is_hand_back = (cross_hand < 0) if handedness_label == "Right" else (cross_hand > 0)
+
+            # Configuration for the 4 long fingers: (tip_id, pip_id, dip_id)
+            fingers_config = [
+                (8,  6,  7),   # Index
+                (12, 10, 11),  # Middle
+                (16, 14, 15),  # Ring
+                (20, 18, 19)   # Pinky
+            ]
+
+            valid_fingertips = []
+
+            # 1. Evaluate 4 long fingers
+            for tip_id, pip_id, dip_id in fingers_config:
+                pip, dip, tip = get_pt(pip_id), get_pt(dip_id), get_pt(tip_id)
+
+                v_dip_tip = tip - dip
+                v_dip_pip = pip - dip
+                cross_finger = v_dip_tip[0] * v_dip_pip[1] - v_dip_pip[0] * v_dip_tip[1]
+
+                # Finger shows nail if: the finger joint is flipped OR the back of hand faces camera
+                is_finger_flipped = (cross_finger * cross_hand) < 0
+
+                if is_finger_flipped or is_hand_back:
+                    lm = landmarks[tip_id]
+                    valid_fingertips.append({
+                        "landmark_id": tip_id,
+                        "x": round(lm.x, 6),
+                        "y": round(lm.y, 6),
+                        "z": round(lm.z, 6)
+                    })
+
+            # 2. Evaluate Thumb (ID 4)
+            thumb_dip, thumb_tip = get_pt(3), get_pt(4)
+            # Check if thumb is extended clearly and back of hand is visible
+            if np.linalg.norm(thumb_tip - thumb_dip) > 0.02 and is_hand_back:
+                lm = landmarks[4]
+                valid_fingertips.append({
+                    "landmark_id": 4,
                     "x": round(lm.x, 6),
                     "y": round(lm.y, 6),
                     "z": round(lm.z, 6)
                 })
 
-            output.append(hand_entry)
+            # ONLY APPEND TO OUTPUT IF THE HAND HAS AT LEAST ONE VISIBLE NAIL FINGERTIP
+            if valid_fingertips:
+                # Sort fingertips back to standard landmark ID order (4, 8, 12, 16, 20)
+                valid_fingertips.sort(key=lambda item: item["landmark_id"])
+
+                hand_entry = {
+                    "hand_index": idx,
+                    "handedness": handedness_label,
+                    "fingertips": valid_fingertips
+                }
+                output.append(hand_entry)
 
     return output
 
@@ -386,7 +463,6 @@ def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_m
                 result = _paint_nails(image_bytes, predictions, color=color, alpha=alpha, blur=NAIL_BLUR, preloaded_image=image)
                 if isinstance(result, bytes):
                     return result, True
-                    
         return image_bytes, False
     except Exception:
         return image_bytes, False
