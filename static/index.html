@@ -38,11 +38,13 @@
             border: none;
             background: rgba(0, 0, 0, 0.6);
             color: #fff;
-            font-size: 22px;
             cursor: pointer;
             z-index: 30;
             backdrop-filter: blur(8px);
             display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
         }
         #output {
             position: fixed;
@@ -160,7 +162,12 @@
 <body>
     <h1>Nail Try-On</h1>
     <button id="startBtn">Try It On</button>
-    <button id="switchCamBtn" aria-label="Switch camera">⇄</button>
+    <button id="switchCamBtn" aria-label="Switch camera">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M7 16V4m0 0L3 8m4-4l4 4"/>
+        <path d="M17 8v12m0 0l4-4m-4 4l-4-4"/>
+      </svg>
+    </button>
     <img id="output" />
     <video id="video" autoplay playsinline webkit-playsinline></video>
     
