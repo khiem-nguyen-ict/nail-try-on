@@ -5,7 +5,8 @@ A real-time nail polish try-on web app built with FastAPI, MediaPipe, and RoBoFl
 ## Features
 
 - **Real-time processing** via WebSocket (`/ws/{session_id}`)
-- **Hand detection** using MediaPipe Hands
+- **Hand detection** using MediaPipe Hands (tuned for accuracy)
+- **Orientation-aware fingertip filtering**: blurry frames and non-visible nail tips are filtered out (see [Detection Pipeline](#detection-pipeline))
 - **Nail segmentation** using a RoBoFlow RF-DETR segmentation model
 - **Color transfer** to recolor detected nail regions while preserving texture
 - **Performance optimizations** for shared hosting: frame rate limiting, downscaled detection, and no-hand cooldown
@@ -14,6 +15,7 @@ A real-time nail polish try-on web app built with FastAPI, MediaPipe, and RoBoFl
 ## Requirements
 
 - Python 3.11+
+- mediapipe >= 0.10.14
 - A [RoBoFlow API key](https://app.roboflow.com/)
 
 ## Setup
@@ -69,6 +71,43 @@ FastAPI app at `/`.
 | `NO_HAND_COOLDOWN` | `1.0` | Seconds to skip processing after no hands are detected. |
 | `ROBOFLOW_MAX_DIM` | `1024` | Max pixel dimension for images sent to the RoBoFlow API. Lower = faster API response. |
 
+## Detection Pipeline
+
+Before any nail segmentation runs, each frame goes through a three-layer
+hand/fingertip filtering pipeline to reduce wasted work and improve accuracy.
+Only frames that pass all layers proceed to the RoBoFlow segmentation step.
+
+1. **Receive frame** — The browser sends a JPEG frame over `/ws/{session_id}`.
+2. **Decode once** — The frame is decoded from JPEG bytes into a PIL Image.
+3. **Layer 1 — Sharpness filter** — A Laplacian variance check
+   (`_is_sharp()`, threshold `80.0`) rejects blurry or out-of-focus frames
+   early. Blurry frames return immediately without hand detection.
+4. **Layer 2 — Hand orientation** — A 2D cross-product between the wrist→index
+   MCP and wrist→pinky MCP vectors determines whether the **back of the hand**
+   is facing the camera (vs. the palm).
+5. **Layer 3 — Per-finger visibility** — For each of the four long fingers
+   (index, middle, ring, pinky), a cross-product between the DIP→tip and
+   DIP→PIP vectors determines whether the finger is **flipped** (nail visible).
+   The thumb (landmark 4) is only reported when the back of the hand is
+   visible and the thumb is clearly extended.
+6. **Filter & sort** — Only hands with **at least one visible nail fingertip**
+   are kept. Fingertips are sorted back to standard landmark ID order
+   (`4, 8, 12, 16, 20`).
+
+### Detector configuration
+
+MediaPipe Hands is tuned for accuracy at the cost of some speed:
+
+| Parameter | Value | Notes |
+|---|---|---|
+| `model_complexity` | `1` | Balanced accuracy/speed (0 would be faster) |
+| `min_detection_confidence` | `0.95` | Higher precision, fewer false positives |
+| `min_tracking_confidence` | `0.95` | Stable landmark tracking across frames |
+| `max_num_hands` | `2` | Detect both hands |
+
+The sharpness threshold (`80.0`) is currently hardcoded and may be exposed as
+an environment variable in a future change.
+
 ## Processing Workflow
 
 Each frame from the browser WebSocket goes through this pipeline:
@@ -77,8 +116,9 @@ Each frame from the browser WebSocket goes through this pipeline:
 2. **Decode once** — The frame is decoded from JPEG bytes into a PIL Image.
 3. **Hand detection** — MediaPipe Hands runs on a downscaled version of the frame
    (`MAX_DETECTION_DIM`) to detect hands and extract fingertip landmarks.
-4. **Nail segmentation** — If hands are detected, the full frame is sent to the
-   RoBoFlow RF-DETR segmentation model, which returns nail region polygons.
+ 4. **Nail segmentation** — If hands pass the Detection Pipeline and at least
+    one nail fingertip is visible, the full frame is sent to the
+    RoBoFlow RF-DETR segmentation model, which returns nail region polygons.
 5. **Filter by proximity** — Only nail predictions that contain at least one
    fingertip are kept, using a configurable distance threshold
    (`SPACE_DETECTION_THRESHOLD`).
