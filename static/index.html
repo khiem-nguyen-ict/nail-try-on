@@ -81,18 +81,26 @@
         #status { top: 20px; }
         #latency { top: 44px; font-size: 12px; }
         
-        /* Color palette bar */
+        /* Color palette bar.
+           NOTE: we deliberately do NOT use `display:flex` + `justify-content:
+           center` here. On iOS Safari that combination breaks horizontal
+           scrolling — the centered content gets offset and you can scroll to
+           the right end but never back to the left/start, so the first color
+           swatches become unreachable. Instead we use a block container with
+           text-align:center + white-space:nowrap, which centers the row when
+           it fits AND lets you drag-scroll to both edges when it overflows.
+           `font-size: 0` kills the inline whitespace gap between bubbles. */
         #colorBar {
             position: fixed;
             left: 0;
             right: 0;
             bottom: 30px;
-            display: flex;
-            flex-wrap: nowrap;
-            justify-content: center;
+            display: block;
             overflow-x: auto;
             overflow-y: hidden;
-            gap: 14px;
+            text-align: center;
+            white-space: nowrap;
+            font-size: 0;
             padding: 12px 20px;
             background: rgba(0, 0, 0, 0.6);
             border-radius: 40px;
@@ -103,6 +111,12 @@
         }
         #colorBar::-webkit-scrollbar { display: none; }
         .color-bubble {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+            margin: 0 7px;
+            font-size: 14px;
             width: 36px;
             height: 36px;
             border-radius: 50%;
