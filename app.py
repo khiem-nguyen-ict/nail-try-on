@@ -3,8 +3,16 @@ import base64
 import json
 import os
 import time
+import warnings
 from io import BytesIO
 from typing import Union
+
+warnings.filterwarnings(
+    "ignore",
+    message="SymbolDatabase.GetPrototype\\(\\) is deprecated.*",
+    category=UserWarning,
+    module="google.protobuf.symbol_database",
+)
 
 import cv2
 import mediapipe as mp
@@ -30,7 +38,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 async def get_index():
     with open("static/index.html", "r", encoding="utf-8") as f:
-        return HTMLResponse(f.read())
+        html = f.read()
+    html = html.replace("{{MAX_CAPTURE_DIM}}", str(MAX_CAPTURE_DIM))
+    html = html.replace("{{MAX_SEND_FPS}}", str(MAX_SEND_FPS))
+    return HTMLResponse(html)
 
 
 # Default fill color: solid red.
@@ -43,6 +54,9 @@ MAX_DETECTION_DIM = int(os.getenv("MAX_DETECTION_DIM", "320"))
 MAX_PROCESS_FPS = int(os.getenv("MAX_PROCESS_FPS", "20"))
 NO_HAND_COOLDOWN = float(os.getenv("NO_HAND_COOLDOWN", "1.0"))
 ROBOFLOW_MAX_DIM = int(os.getenv("ROBOFLOW_MAX_DIM", "1024"))
+FRAME_SKIPPED_BLUR_THRESHOLD = float(os.getenv("FRAME_SKIPPED_BLUR_THRESHOLD", "50.0"))
+MAX_CAPTURE_DIM = int(os.getenv("MAX_CAPTURE_DIM", "1280"))
+MAX_SEND_FPS = int(os.getenv("MAX_SEND_FPS", "10"))
 
 TARGET_HSV = np.array([0, 255, 255], dtype=np.float32)
 
@@ -206,6 +220,34 @@ def _paint_nails(image_source: Union[str, bytes], regions, color=RED, alpha: flo
         return buf.getvalue()
 
     return image
+
+
+def _is_blur(image_bytes: bytes, threshold: float = FRAME_SKIPPED_BLUR_THRESHOLD) -> bool:
+    """Return True if the image is too blurry, False otherwise.
+
+    Uses the variance of the Laplacian method. A sharp image has high
+    frequency details and thus a high Laplacian variance. A blurry
+    image has a low variance.
+
+    Args:
+        image_bytes: JPEG image bytes.
+        threshold: Laplacian variance threshold. Images with variance
+            below this value are considered blurry.
+
+    Returns:
+        True if the image is blurry, False otherwise.
+    """
+    try:
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if image is None:
+            return True
+
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+        return laplacian_var < threshold
+    except Exception:
+        return True
 
 
 def _detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_image: Union[Image.Image, None] = None):
@@ -372,13 +414,19 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, color: str =
 def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_max_dim: int, color: tuple = RED, alpha: float = NAIL_ALPHA):
     """Process a frame and return (processed_bytes, hands_found_bool)."""
     try:
+        # Layer 1: Check if the image is blurry. If it is, return the original image.
+        if _is_blur(image_bytes, threshold=FRAME_SKIPPED_BLUR_THRESHOLD):
+            return image_bytes, False
+
         with ImageOps.exif_transpose(Image.open(BytesIO(image_bytes))) as img:
             image = img.convert("RGB")
             width, height = image.size
         
+        # Layer 2: Detect hands. If hands are found, proceed to detect nails and paint them. Otherwise, return the original image.
         hands_data = _detect_hands(image_bytes, max_dim=max_dim, preloaded_image=image)
 
         if hands_data and len(hands_data) > 0:
+             # Layer 3: Detect nails and filter by hands.
             nails = _detect_nails(image_bytes, max_dim=roboflow_max_dim)
 
             predictions = _filter_nails_by_hands(nails, hands_data, width, height)
@@ -386,10 +434,9 @@ def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_m
                 result = _paint_nails(image_bytes, predictions, color=color, alpha=alpha, blur=NAIL_BLUR, preloaded_image=image)
                 if isinstance(result, bytes):
                     return result, True
-                    
-        return image_bytes, False
     except Exception:
-        return image_bytes, False
+        print("Error processing frame:", str(e))
+    return image_bytes, False
 
 
 def main():
