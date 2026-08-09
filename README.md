@@ -68,28 +68,36 @@ FastAPI app at `/`.
 | `MAX_PROCESS_FPS` | `20` | Max frames per second the server will process per WebSocket connection. |
 | `NO_HAND_COOLDOWN` | `1.0` | Seconds to skip processing after no hands are detected. |
 | `ROBOFLOW_MAX_DIM` | `1024` | Max pixel dimension for images sent to the RoBoFlow API. Lower = faster API response. |
+| `FRAME_SKIPPED_BLUR_THRESHOLD` | `50.0` | Laplacian variance threshold below which a frame is considered too blurry and skipped. Lower = stricter (more frames skipped). |
+| `MAX_CAPTURE_DIM` | `1280` | Max pixel dimension for the captured frame sent from the browser to the backend. |
+| `MAX_SEND_FPS` | `10` | Max frames per second the browser will send to the backend over WebSocket. |
 
 ## Processing Workflow
 
 Each frame from the browser WebSocket goes through this pipeline:
 
 1. **Receive frame** — The browser sends a JPEG frame over `/ws/{session_id}`.
-2. **Decode once** — The frame is decoded from JPEG bytes into a PIL Image.
-3. **Hand detection** — MediaPipe Hands runs on a downscaled version of the frame
+2. **Blur check** — The frame is evaluated using Laplacian variance. If it is below
+   `FRAME_SKIPPED_BLUR_THRESHOLD`, the original frame is returned immediately and
+   processing is skipped, saving CPU.
+3. **Decode once** — The frame is decoded from JPEG bytes into a PIL Image.
+4. **Hand detection** — MediaPipe Hands runs on a downscaled version of the frame
    (`MAX_DETECTION_DIM`) to detect hands and extract fingertip landmarks.
-4. **Nail segmentation** — If hands are detected, the full frame is sent to the
-   RoBoFlow RF-DETR segmentation model, which returns nail region polygons.
-5. **Filter by proximity** — Only nail predictions that contain at least one
+   If no hands are found, the original frame is returned.
+5. **Nail segmentation** — The full frame is sent to the RoBoFlow RF-DETR
+   segmentation model, which returns nail region polygons.
+6. **Filter by proximity** — Only nail predictions that contain at least one
    fingertip are kept, using a configurable distance threshold
    (`SPACE_DETECTION_THRESHOLD`).
-6. **Paint nails** — The selected nail regions are recolored using OpenCV color
+7. **Paint nails** — The selected nail regions are recolored using OpenCV color
    transfer (HSV hue replacement) with configurable opacity (`NAIL_ALPHA`)
    and blur (`NAIL_BLUR`).
-7. **Stream back** — The processed JPEG is sent back to the browser over the
+8. **Stream back** — The processed JPEG is sent back to the browser over the
    same WebSocket.
 
-If no hands are detected, the original frame is returned immediately and
-processing is skipped for `NO_HAND_COOLDOWN` seconds to save CPU.
+If processing fails or no nails are found, the original frame is returned.
+At the WebSocket level, when no hands are detected, processing is skipped for
+`NO_HAND_COOLDOWN` seconds to save CPU.
 
 ## Performance
 
@@ -101,7 +109,9 @@ processing is skipped for `NO_HAND_COOLDOWN` seconds to save CPU.
 The app includes several optimizations for CPU-limited hosting:
 
 - **Frontend frame cap:** The browser is capped at `MAX_SEND_FPS` (10 FPS) so the client does not flood the WebSocket faster than the server can process.
+- **Capture downscale:** Frames sent from the browser are downscaled to `MAX_CAPTURE_DIM` (1280px) to reduce bandwidth and backend processing time.
 - **Frame rate limiting:** Each WebSocket connection is capped at `MAX_PROCESS_FPS` to avoid CPU saturation.
+- **Blur skip:** Frames with low Laplacian variance are detected as blurry and returned unprocessed, skipping the expensive hand detection and API calls.
 - **Downscaled hand detection:** MediaPipe runs on a smaller image (`MAX_DETECTION_DIM`), then maps normalized coordinates back to the original frame.
 - **No-hand cooldown:** When no hands are detected, processing is skipped for `NO_HAND_COOLDOWN` seconds.
 - **Downscaled API requests:** Images sent to RoBoflow are resized to `ROBOFLOW_MAX_DIM`, then polygon coordinates are scaled back.
@@ -139,6 +149,9 @@ docker run -p 8000:8000 \
   -e MAX_PROCESS_FPS=20 \
   -e NO_HAND_COOLDOWN=1.0 \
   -e ROBOFLOW_MAX_DIM=1024 \
+  -e FRAME_SKIPPED_BLUR_THRESHOLD=50.0 \
+  -e MAX_CAPTURE_DIM=1280 \
+  -e MAX_SEND_FPS=10 \
   nail-try-on
 ```
 
