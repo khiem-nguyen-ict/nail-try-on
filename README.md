@@ -71,6 +71,7 @@ FastAPI app at `/`.
 | `FRAME_SKIPPED_BLUR_THRESHOLD` | `50.0` | Laplacian variance threshold below which a frame is considered too blurry and skipped. Lower = stricter (more frames skipped). |
 | `MAX_CAPTURE_DIM` | `1280` | Max pixel dimension for the captured frame sent from the browser to the backend. |
 | `MAX_SEND_FPS` | `10` | Max frames per second the browser will send to the backend over WebSocket. |
+| `IMAGE_QUALITY` | `80` | JPEG compression quality (0–100) for frames sent from the backend to the browser. Lower = smaller payload, lower latency. |
 
 ## Processing Workflow
 
@@ -93,7 +94,7 @@ Each frame from the browser WebSocket goes through this pipeline:
    transfer (HSV hue replacement) with configurable opacity (`NAIL_ALPHA`)
    and blur (`NAIL_BLUR`).
 8. **Stream back** — The processed JPEG is sent back to the browser over the
-   same WebSocket.
+   same WebSocket, compressed at the configured `IMAGE_QUALITY`.
 
 If processing fails or no nails are found, the original frame is returned.
 At the WebSocket level, when no hands are detected, processing is skipped for
@@ -150,8 +151,9 @@ docker run -p 8000:8000 \
   -e NO_HAND_COOLDOWN=1.0 \
   -e ROBOFLOW_MAX_DIM=1024 \
   -e FRAME_SKIPPED_BLUR_THRESHOLD=50.0 \
-  -e MAX_CAPTURE_DIM=1280 \
+   -e MAX_CAPTURE_DIM=1280 \
   -e MAX_SEND_FPS=10 \
+  -e IMAGE_QUALITY=80 \
   nail-try-on
 ```
 
