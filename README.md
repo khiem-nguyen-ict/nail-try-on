@@ -67,11 +67,16 @@ FastAPI app at `/`.
 | `MAX_DETECTION_DIM` | `320` | Max pixel dimension for MediaPipe hand detection. Lower = faster. Set to `0` to disable. |
 | `MAX_PROCESS_FPS` | `20` | Max frames per second the server will process per WebSocket connection. |
 | `NO_HAND_COOLDOWN` | `1.0` | Seconds to skip processing after no hands are detected. |
-| `ROBOFLOW_MAX_DIM` | `640` | Max pixel dimension for images sent to the RoBoFlow API. Lower = faster API response. |
+| `ROBOFLOW_MAX_DIM` | `1024` | Max pixel dimension for images sent to the RoBoFlow API. Lower = faster API response. |
 
 ## Performance
 
-The app is optimized for CPU-limited hosting (e.g., Render.com free tier):
+> **Note:** This project is a proof-of-concept (PoC) demo. Frame rate and
+> responsiveness depend heavily on the host's CPU. Running on better hosting
+> with more CPU (e.g., Render Standard/Pro, a VPS, or local desktop) will
+> deliver significantly smoother real-time performance.
+
+The app includes several optimizations for CPU-limited hosting:
 
 - **Frontend frame cap:** The browser is capped at `MAX_SEND_FPS` (10 FPS) so the client does not flood the WebSocket faster than the server can process.
 - **Frame rate limiting:** Each WebSocket connection is capped at `MAX_PROCESS_FPS` to avoid CPU saturation.
@@ -79,6 +84,24 @@ The app is optimized for CPU-limited hosting (e.g., Render.com free tier):
 - **No-hand cooldown:** When no hands are detected, processing is skipped for `NO_HAND_COOLDOWN` seconds.
 - **Downscaled API requests:** Images sent to RoBoflow are resized to `ROBOFLOW_MAX_DIM`, then polygon coordinates are scaled back.
 - **Single image decode:** Each frame is decoded from JPEG bytes only once and reused across hand detection, API inference, and painting.
+
+### Render free tier expectations
+
+When deployed on Render's **Free** plan (512 MB RAM / 0.1 CPU), this app is
+typically limited to roughly **2–3 FPS** after optimizations. The main reasons:
+
+- **0.1 CPU share:** MediaPipe hand detection and the per-frame OpenCV painting
+  pipeline are CPU-bound. Render's free tier provides only ~10% of a single
+  vCPU, which throttles every processed frame.
+- **Memory headroom:** 512 MB leaves little room for model loading + frame
+  buffering + PIL/NumPy overhead.
+- **15-minute spin-down:** Free web services spin down after 15 minutes of
+  inactivity. The next request triggers a ~30–60s cold start, after which
+  performance returns to the limited steady-state rate.
+
+For production use, upgrade to at least the **Starter** plan ($7/mo, 0.5 CPU)
+or **Standard** plan ($25/mo, 1 CPU). A local desktop with 4+ cores typically
+runs this workload at real-time rates (15–30 FPS).
 
 ## Docker
 
@@ -93,7 +116,7 @@ docker run -p 8000:8000 \
   -e MAX_DETECTION_DIM=320 \
   -e MAX_PROCESS_FPS=20 \
   -e NO_HAND_COOLDOWN=1.0 \
-  -e ROBOFLOW_MAX_DIM=640 \
+  -e ROBOFLOW_MAX_DIM=1024 \
   nail-try-on
 ```
 
