@@ -124,6 +124,27 @@ docker run -p 8000:8000 \
 
 A `render.yaml` is included. Connect the repo on [Render.com](https://render.com), set `ROBOFLOW_API_KEY` in the dashboard, and deploy.
 
+## Vercel
+
+Vercel Serverless Functions have a **500 MB bundle size limit**. This app’s
+dependencies (notably `mediapipe` + `opencv-python-headless` + `numpy`) exceed
+that limit, so deploying with Vercel’s Python runtime will fail.
+
+To deploy on Vercel, use **Vercel Docker / Container deployment** instead.
+The included `vercel.json` tells Vercel to build from the existing `Dockerfile`,
+which bypasses the Serverless Function bundle limit.
+
+1. Push this repo to GitHub.
+2. Import the project on [Vercel](https://vercel.com).
+3. In the project settings, make sure the **Framework Preset** is set to
+   **Docker** (or let Vercel auto-detect from `vercel.json`).
+4. Add `ROBOFLOW_API_KEY` in the Vercel Environment Variables dashboard.
+5. Deploy.
+
+> **Note:** If Vercel auto-detects the project as a Python Serverless Function
+> instead of Docker, delete the project on Vercel and re-import it, selecting
+> **Docker** as the framework during setup.
+
 ## License
 
 MIT
