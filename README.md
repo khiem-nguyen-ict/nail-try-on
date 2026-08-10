@@ -19,7 +19,7 @@ A real-time nail polish try-on web app built with FastAPI, MediaPipe, and RoBoFl
 ## Setup
 
 ```bash
-python3.11 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```

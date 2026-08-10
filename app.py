@@ -462,6 +462,7 @@ def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_m
     try:
         # Layer 1: Check if the image is blurry. If it is, return the original image.
         if _is_blur(image_bytes, threshold=FRAME_SKIPPED_BLUR_THRESHOLD):
+            print("Frame is too blurry, skipping processing.")  
             return image_bytes, False
 
         with ImageOps.exif_transpose(Image.open(BytesIO(image_bytes))) as img:
@@ -472,15 +473,17 @@ def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_m
         hands_data = _detect_hands(image_bytes, max_dim=max_dim, preloaded_image=image)
 
         if hands_data and len(hands_data) > 0:
+            print(f"Detected {len(hands_data)} hands.")
              # Layer 3: Detect nails and filter by hands.
             nails = _detect_nails(image_bytes, max_dim=roboflow_max_dim)
 
             predictions = _filter_nails_by_hands(nails, hands_data, width, height)
             if predictions and len(predictions) > 0:
+                print(f"Detected {len(predictions)} nail regions after filtering by hands.")
                 result = _paint_nails(image_bytes, predictions, color=color, alpha=alpha, blur=NAIL_BLUR, preloaded_image=image)
                 if isinstance(result, bytes):
                     return result, True
-    except Exception:
+    except Exception as e:
         print("Error processing frame:", str(e))
     return image_bytes, False
 

@@ -22,5 +22,5 @@ services:
         value: 1.0
       - key: ROBOFLOW_MAX_DIM
         value: 1024
-      -key: FRAME_SKIPPED_BLUR_THRESHOLD
+      - key: FRAME_SKIPPED_BLUR_THRESHOLD
         value: 50.0
