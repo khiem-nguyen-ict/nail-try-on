@@ -166,20 +166,16 @@ def _apply_color_transfer(
     return result
 
 
-def _paint_nails(image_source: Union[str, bytes], regions, color=RED, alpha: float = 1.0, blur: int = 0, preloaded_image: Union[Image.Image, None] = None):
-    """Paint detected nail regions on the image with ``color``.
-
-    Args:
-        image_source: Path to the source image file or JPEG bytes.
-        regions: List of detected nail regions.
-        color: Color to use for painting.
-        alpha: Opacity of the painted regions.
-        blur: Blur radius for the painted regions.
-        preloaded_image: Optional pre-decoded PIL Image to avoid
-            re-reading ``image_source``.
-        preloaded_image: Optional pre-decoded PIL Image to avoid
-            re-reading ``image_source``.
-    """
+def _paint_nails(
+    image_source: Union[str, bytes], 
+    regions, 
+    color=(255, 0, 0), 
+    alpha: float = 1.0, 
+    blur: int = 0, 
+    gloss_intensity: float = 0.5, # Độ bóng (0.0: tắt, 0.5: vừa, 1.0: bóng mạnh)
+    preloaded_image: Union[Image.Image, None] = None
+):
+    """Paint detected nail regions with realistic glossy effect (Optimized)."""
     if preloaded_image is not None:
         image = preloaded_image.convert("RGB")
     elif isinstance(image_source, bytes):
@@ -190,28 +186,79 @@ def _paint_nails(image_source: Union[str, bytes], regions, color=RED, alpha: flo
     image_np = np.array(image)
     h, w = image_np.shape[:2]
 
-    mask = Image.new("L", (w, h), 0)
-    draw_mask = ImageDraw.Draw(mask)
+    # 1. CReate masks for nails and gloss effect
+    mask_np = np.zeros((h, w), dtype=np.uint8)
+    gloss_mask_np = np.zeros((h, w), dtype=np.float32)
 
     for pred in regions:
         points = pred.get("points")
         if not points:
             continue
-        polygon = [(float(p["x"]), float(p["y"])) for p in points]
-        draw_mask.polygon(polygon, fill=255)
-    
-    mask_np = np.array(mask)
-    
+        
+        # Convert points to numpy array of shape (N, 2) with integer coordinates
+        poly_np = np.array([(float(p["x"]), float(p["y"])) for p in points], dtype=np.int32)
+        
+        # draw the polygon on the mask
+        cv2.fillPoly(mask_np, [poly_np], 255)
+
+        # Glossy effect: Create a distance transform to simulate light reflection
+        if gloss_intensity > 0:
+            # Get bounding box of the polygon to limit the distance transform computation
+            x, y, bw, bh = cv2.boundingRect(poly_np)
+            if bw <= 0 or bh <= 0:
+                continue
+
+            # Cut out the region of interest for distance transform
+            crop_mask = np.zeros((bh, bw), dtype=np.uint8)
+            crop_poly = poly_np - [x, y]
+            cv2.fillPoly(crop_mask, [crop_poly], 255)
+
+            # Distance transform to create a gradient for the gloss effect
+            dist = cv2.distanceTransform(crop_mask, cv2.DIST_L2, 3)
+            max_val = dist.max()
+            
+            if max_val > 0:
+                # Inscrease the highlight effect by raising to a power (1.8) for a more pronounced glossy look
+                highlight = (dist / max_val) ** 1.8
+                
+                # Update the gloss mask in the original image space
+                crop_gloss = gloss_mask_np[y:y+bh, x:x+bw]
+                np.maximum(crop_gloss, highlight, out=crop_gloss)
+
+    # 2. Blur the masks to create a smooth transition
     if blur > 0:
         ksize = 2 * int(blur) + 1
         mask_np = cv2.GaussianBlur(mask_np, (ksize, ksize), sigmaX=blur)
-    
-    image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+        if gloss_intensity > 0:
+            gloss_mask_np = cv2.GaussianBlur(gloss_mask_np, (ksize, ksize), sigmaX=blur)
 
+    # 3. Apply color transfer to the nail regions
+    image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
     rgb_color = np.uint8([[color]])
     target_hsv = cv2.cvtColor(rgb_color, cv2.COLOR_RGB2HSV)[0][0].astype(np.float32)
 
     painted_bgr = _apply_color_transfer(image_bgr, mask_np, target_hsv, alpha=alpha)
+
+    # 4. Glossy effect: Adjust brightness and saturation based on the gloss mask
+    if gloss_intensity > 0:
+        painted_hsv = cv2.cvtColor(painted_bgr, cv2.COLOR_BGR2HSV).astype(np.float32)
+
+        # Improve brightness channel V based on the gloss mask
+        v_channel = painted_hsv[:, :, 2]
+        v_channel += gloss_mask_np * (gloss_intensity * 110.0)
+        np.clip(v_channel, 0, 255, out=v_channel)
+
+        # Describe saturation channel S based on the gloss mask to reduce saturation in glossy areas
+        s_channel = painted_hsv[:, :, 1]
+        s_channel *= (1.0 - (gloss_mask_np * gloss_intensity * 0.35))
+        np.clip(s_channel, 0, 255, out=s_channel)
+
+        painted_hsv[:, :, 1] = s_channel
+        painted_hsv[:, :, 2] = v_channel
+
+        painted_bgr = cv2.cvtColor(painted_hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+    # Output the final image as bytes or PIL Image
     painted_rgb = cv2.cvtColor(painted_bgr, cv2.COLOR_BGR2RGB)
     image = Image.fromarray(painted_rgb)
 
@@ -221,7 +268,6 @@ def _paint_nails(image_source: Union[str, bytes], regions, color=RED, alpha: flo
         return buf.getvalue()
 
     return image
-
 
 def _is_blur(image_bytes: bytes, threshold: float = FRAME_SKIPPED_BLUR_THRESHOLD) -> bool:
     """Return True if the image is too blurry, False otherwise.
@@ -417,6 +463,7 @@ def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_m
     try:
         # Layer 1: Check if the image is blurry. If it is, return the original image.
         if _is_blur(image_bytes, threshold=FRAME_SKIPPED_BLUR_THRESHOLD):
+            print("Frame is too blurry, skipping processing.")  
             return image_bytes, False
 
         with ImageOps.exif_transpose(Image.open(BytesIO(image_bytes))) as img:
@@ -427,15 +474,17 @@ def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_m
         hands_data = _detect_hands(image_bytes, max_dim=max_dim, preloaded_image=image)
 
         if hands_data and len(hands_data) > 0:
+            print(f"Detected {len(hands_data)} hands.")
              # Layer 3: Detect nails and filter by hands.
             nails = _detect_nails(image_bytes, max_dim=roboflow_max_dim)
 
             predictions = _filter_nails_by_hands(nails, hands_data, width, height)
             if predictions and len(predictions) > 0:
+                print(f"Detected {len(predictions)} nail regions after filtering by hands.")
                 result = _paint_nails(image_bytes, predictions, color=color, alpha=alpha, blur=NAIL_BLUR, preloaded_image=image)
                 if isinstance(result, bytes):
                     return result, True
-    except Exception:
+    except Exception as e:
         print("Error processing frame:", str(e))
     return image_bytes, False
 
