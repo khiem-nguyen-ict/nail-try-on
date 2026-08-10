@@ -19,7 +19,7 @@ A real-time nail polish try-on web app built with FastAPI, MediaPipe, and RoBoFl
 ## Setup
 
 ```bash
-python3.11 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
@@ -62,6 +62,7 @@ FastAPI app at `/`.
 | `ROBOFLOW_API_KEY` | — | **Required.** RoBoFlow API key |
 | `NAIL_ALPHA` | `0.8` | Blend strength for color transfer |
 | `NAIL_BLUR` | `2` | Gaussian blur radius applied to the nail mask |
+| `NAIL_GLOSS_INTENSITY` | `0.5` | Gloss intensity for the painted nails (`0.0`: off, `1.0`: maximum gloss) |
 | `SPACE_DETECTION_THRESHOLD` | `0.1` | Fingertip-to-nail distance threshold |
 | `YOLO_CONFIDENCE_THRESHOLD` | `0.5` | Minimum confidence for nail predictions |
 | `MAX_DETECTION_DIM` | `320` | Max pixel dimension for MediaPipe hand detection. Lower = faster. Set to `0` to disable. |
@@ -90,11 +91,12 @@ Each frame from the browser WebSocket goes through this pipeline:
 6. **Filter by proximity** — Only nail predictions that contain at least one
    fingertip are kept, using a configurable distance threshold
    (`SPACE_DETECTION_THRESHOLD`).
-7. **Paint nails** — The selected nail regions are recolored using OpenCV color
-   transfer (HSV hue replacement) with configurable opacity (`NAIL_ALPHA`)
-   and blur (`NAIL_BLUR`).
-8. **Stream back** — The processed JPEG is sent back to the browser over the
-   same WebSocket, compressed at the configured `IMAGE_QUALITY`.
+ 7. **Paint nails** — The selected nail regions are recolored using OpenCV color
+    transfer (HSV hue replacement) with configurable opacity (`NAIL_ALPHA`)
+    and blur (`NAIL_BLUR`). A distance-transform-based glossy effect is applied
+    using `NAIL_GLOSS_INTENSITY` to simulate light reflection on the nail surface.
+ 8. **Stream back** — The processed JPEG is sent back to the browser over the
+    same WebSocket.
 
 If processing fails or no nails are found, the original frame is returned.
 At the WebSocket level, when no hands are detected, processing is skipped for
@@ -144,6 +146,7 @@ docker run -p 8000:8000 \
   -e ROBOFLOW_API_KEY=<your-key> \
   -e NAIL_ALPHA=0.8 \
   -e NAIL_BLUR=2 \
+  -e NAIL_GLOSS_INTENSITY=0.5 \
   -e SPACE_DETECTION_THRESHOLD=0.1 \
   -e YOLO_CONFIDENCE_THRESHOLD=0.5 \
   -e MAX_DETECTION_DIM=320 \
