@@ -24,3 +24,9 @@ services:
         value: 1024
       - key: FRAME_SKIPPED_BLUR_THRESHOLD
         value: 50.0
+      - key: MAX_CAPTURE_DIM
+        value: 1280
+      - key: MAX_SEND_FPS
+        value: 10
+      - key: IMAGE_QUALITY
+        value: 80
