@@ -15,7 +15,7 @@ warnings.filterwarnings(
 )
 
 import cv2
-import mediapipe as mp
+from mediapipe.solutions import hands as mp_hands
 import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
@@ -65,7 +65,6 @@ TARGET_HSV = np.array([0, 255, 255], dtype=np.float32)
 URL = "https://serverless.roboflow.com/thanh-khiem-nguyen/nails_segmentation-m8ew1-1-rfdetr-seg-large-t1"
 PARAMS = {"api_key": os.getenv("ROBOFLOW_API_KEY", ""), "confidence": YOLO_CONFIDENCE_THRESHOLD}
 
-mp_hands = mp.solutions.hands
 hands_detector = mp_hands.Hands(
     static_image_mode=False,
     max_num_hands=2,
