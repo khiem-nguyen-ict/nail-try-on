@@ -13,19 +13,35 @@
             overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
-        #startBtn {
+        .center-buttons {
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            padding: 16px 32px;
-            font-size: 18px;
+            display: flex;
+            gap: 24px;
+            z-index: 10;
+        }
+        .center-buttons button {
+            width: 72px;
+            height: 72px;
+            border-radius: 18px;
+            border: none;
             background: #fff;
             color: #000;
-            border: none;
-            border-radius: 12px;
             cursor: pointer;
-            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            transition: transform 0.15s ease, opacity 0.15s ease;
+        }
+        .center-buttons button:hover {
+            transform: scale(1.05);
+            opacity: 0.95;
+        }
+        .center-buttons button:active {
+            transform: scale(0.95);
         }
         #startBtn.hidden { display: none; }
         #switchCamBtn {
@@ -45,6 +61,42 @@
             align-items: center;
             justify-content: center;
             padding: 0;
+        }
+        #backBtn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            cursor: pointer;
+            z-index: 30;
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+        #loadingSpinner {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            z-index: 40;
+            display: none;
+            pointer-events: none;
+        }
+        @keyframes spin {
+            to { transform: translate(-50%, -50%) rotate(360deg); }
         }
         #output {
             position: fixed;
@@ -72,26 +124,7 @@
             z-index: -1;
             display: block;
         }
-        #status, #latency {
-            position: fixed;
-            left: 20px;
-            color: #aaa;
-            font-size: 14px;
-            margin: 0;
-            text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-        }
-        #status { top: 20px; }
-        #latency { top: 44px; font-size: 12px; }
         
-        /* Color palette bar.
-           NOTE: we deliberately do NOT use `display:flex` + `justify-content:
-           center` here. On iOS Safari that combination breaks horizontal
-           scrolling — the centered content gets offset and you can scroll to
-           the right end but never back to the left/start, so the first color
-           swatches become unreachable. Instead we use a block container with
-           text-align:center + white-space:nowrap, which centers the row when
-           it fits AND lets you drag-scroll to both edges when it overflows.
-           `font-size: 0` kills the inline whitespace gap between bubbles. */
         #colorBar {
             position: fixed;
             left: 0;
@@ -159,31 +192,50 @@
 </head>
 <body>
     <h1>Nail Try-On</h1>
-    <button id="startBtn">Try It On</button>
+    <div class="center-buttons">
+        <button id="startBtn" aria-label="Start camera">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+            </svg>
+        </button>
+        <button id="uploadBtn" aria-label="Upload image">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+        </button>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" style="display:none" />
     <button id="switchCamBtn" aria-label="Switch camera">
       <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M7 16V4m0 0L3 8m4-4l4 4"/>
         <path d="M17 8v12m0 0l4-4m-4 4l-4-4"/>
       </svg>
     </button>
+    <button id="backBtn" aria-label="Back">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 12H5"/>
+        <path d="M12 19l-7-7 7-7"/>
+      </svg>
+    </button>
+    <div id="loadingSpinner"></div>
     <img id="output" />
     <video id="video" autoplay playsinline webkit-playsinline></video>
     
-    <p id="status">Session ID: <span id="sessionId">-</span></p>
-    <p id="latency"></p>
-    
     <div id="colorBar">
-        <div class="color-bubble selected" data-color="#FF0000" style="background:#FF0000;" title="Red"></div>
-        <div class="color-bubble" data-color="#FF69B4" style="background:#FF69B4;" title="Pink"></div>
-        <div class="color-bubble" data-color="#800080" style="background:#800080;" title="Purple"></div>
-        <div class="color-bubble" data-color="#0000FF" style="background:#0000FF;" title="Blue"></div>
-        <div class="color-bubble" data-color="#00FFFF" style="background:#00FFFF;" title="Cyan"></div>
-        <div class="color-bubble" data-color="#00FF00" style="background:#00FF00;" title="Green"></div>
-        <div class="color-bubble" data-color="#FFFF00" style="background:#FFFF00;" title="Yellow"></div>
-        <div class="color-bubble" data-color="#FFA500" style="background:#FFA500;" title="Orange"></div>
+        <div class="color-bubble selected" data-color="#722F37" style="background:#722F37;" title="Burgundy"></div>
+        <div class="color-bubble" data-color="#C08081" style="background:#C08081;" title="Rose"></div>
+        <div class="color-bubble" data-color="#4B0082" style="background:#4B0082;" title="Plum"></div>
+        <div class="color-bubble" data-color="#000080" style="background:#000080;" title="Navy"></div>
+        <div class="color-bubble" data-color="#008080" style="background:#008080;" title="Teal"></div>
+        <div class="color-bubble" data-color="#228B22" style="background:#228B22;" title="Forest"></div>
+        <div class="color-bubble" data-color="#B8860B" style="background:#B8860B;" title="Gold"></div>
+        <div class="color-bubble" data-color="#CC5500" style="background:#CC5500;" title="Rust"></div>
         <div class="color-bubble" data-color="#8B4513" style="background:#8B4513;" title="Brown"></div>
-        <div class="color-bubble" data-color="#000000" style="background:#000000;" title="Black"></div>
-        <div class="color-bubble" data-color="#FFFFFF" style="background:#FFFFFF;" title="White"></div>
+        <div class="color-bubble" data-color="#1C1C1C" style="background:#1C1C1C;" title="Black"></div>
+        <div class="color-bubble" data-color="#FFFAF0" style="background:#FFFAF0;" title="Cream"></div>
     </div>
     
     <div id="opacityBar">
@@ -194,11 +246,14 @@
     <script>
         const video = document.getElementById('video');
         const output = document.getElementById('output');
-        const statusEl = document.getElementById('status');
-        const sessionIdEl = document.getElementById('sessionId');
-        const latencyEl = document.getElementById('latency');
         const startBtn = document.getElementById('startBtn');
         const switchCamBtn = document.getElementById('switchCamBtn');
+        const backBtn = document.getElementById('backBtn');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileInput = document.getElementById('fileInput');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+
+        const BACKGROUND_IMAGE = 'https://assets.vogue.com/photos/691f357cc27b47cad254eb6d/master/w_1600%2Cc_limit/SaveClip.App_579687142_18379744144178067_1109136112459296107_n.jpg';
         
         let ws = null;
         let stream = null;
@@ -207,8 +262,7 @@
         let ctx = null;
         let sending = false;
         let processing = false;
-        let frameCount = 0;
-        let lastFpsTime = Date.now();
+        let lastUploadedFile = null;
         
         function generateUUID() {
             return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -242,14 +296,12 @@
         function setupWebSocket() {
             if (ws && ws.readyState === WebSocket.OPEN) return;
             const sessionId = generateUUID();
-            sessionIdEl.textContent = sessionId;
 
             const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${protocol}//${location.host}/ws/${sessionId}?color=${encodeURIComponent(selectedColor)}&opacity=${defaultOpacity}`);
             ws.binaryType = 'arraybuffer';
 
             ws.onopen = () => {
-                statusEl.textContent = 'Connected';
                 sending = true;
                 canvas = document.createElement('canvas');
                 canvas.width = 1;
@@ -261,27 +313,79 @@
             ws.onmessage = (event) => {
                 const blob = new Blob([event.data], { type: 'image/JPEG' });
                 output.src = URL.createObjectURL(blob);
+                output.style.opacity = 1;
                 processing = false;
-
-                const now = Date.now();
-                frameCount++;
-                if (now - lastFpsTime >= 1000) {
-                    latencyEl.textContent = `FPS: ${frameCount}`;
-                    frameCount = 0;
-                    lastFpsTime = now;
-                }
             };
 
             ws.onclose = () => {
-                statusEl.textContent = 'Disconnected';
                 sending = false;
                 processing = false;
             };
 
             ws.onerror = (err) => {
                 console.error('WebSocket error:', err);
-                statusEl.textContent = 'Connection error';
             };
+        }
+
+        function goBackToHome() {
+            if (ws) {
+                ws.onclose = null;
+                ws.close();
+                ws = null;
+            }
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            video.srcObject = null;
+            console.log('Camera stopped, remove src from output');
+            output.src = BACKGROUND_IMAGE;
+            output.style.opacity = 0.2;
+            sending = false;
+            processing = false;
+            captureGeo = null;
+
+            startBtn.classList.remove('hidden');
+            uploadBtn.style.display = '';
+            backBtn.style.display = 'none';
+            switchCamBtn.style.display = 'none';
+            fileInput.value = '';
+            lastUploadedFile = null;
+            loadingSpinner.style.display = 'none';
+        }
+
+        function repaintImage() {
+            if (!lastUploadedFile) return;
+            processing = true;
+            const formData = new FormData();
+            formData.append('file', lastUploadedFile);
+
+            startBtn.classList.add('hidden');
+            uploadBtn.style.display = 'none';
+            backBtn.style.display = 'flex';
+            loadingSpinner.style.display = 'block';
+            
+            fetch(`/paint?color=${encodeURIComponent(selectedColor.replace('#', ''))}&opacity=${encodeURIComponent(opacitySlider.value)}`, {
+                method: 'POST',
+                body: formData,
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Repaint failed');
+                return response.blob();
+            })
+            .then(blob => {
+                if(processing) {
+                    output.src = URL.createObjectURL(blob);
+                    output.style.opacity = 1;
+                }   
+            })
+            .catch(err => {
+                console.error('Repaint error:', err);
+            })
+            .finally(() => {
+                loadingSpinner.style.display = 'none';
+                processing = false;
+            });
         }
 
         async function startCamera() {
@@ -289,9 +393,10 @@
                 await acquireCamera();
                 setupWebSocket();
                 startBtn.classList.add('hidden');
+                uploadBtn.style.display = 'none';
+                backBtn.style.display = 'flex';
             } catch (err) {
                 console.error('Camera error:', err);
-                statusEl.textContent = 'Camera access denied or unavailable';
             }
         }
 
@@ -301,7 +406,6 @@
                 await acquireCamera();
             } catch (err) {
                 console.error('Camera switch error:', err);
-                statusEl.textContent = 'Camera switch unavailable';
             }
         }
 
@@ -309,14 +413,26 @@
         if (switchCamBtn) {
             switchCamBtn.addEventListener('click', switchCamera);
         }
-
+        backBtn.addEventListener('click', goBackToHome);
+        
+        uploadBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            lastUploadedFile = file;
+            repaintImage();
+        });
+        
         // Only show the switch-camera button on mobile/tablet devices.
         if (isMobileOrTablet()) {
             switchCamBtn.style.display = 'flex';
         }
         
         // Color palette logic
-        let selectedColor = '#FF0000';
+        let selectedColor = '#722F37';
         let defaultOpacity = {{NAIL_ALPHA}};
         const bubbles = document.querySelectorAll('.color-bubble');
         
@@ -327,6 +443,8 @@
                 selectedColor = bubble.getAttribute('data-color');
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: 'color', value: selectedColor }));
+                } else if (lastUploadedFile) {
+                    repaintImage();
                 }
             });
         });
@@ -344,10 +462,17 @@
         
         opacitySlider.addEventListener('input', (e) => {
             updateOpacity(e.target.value);
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'opacity', value: parseFloat(e.target.value) }));
+            } else if (lastUploadedFile) {
+                repaintImage();
+            }
         });
 
         document.addEventListener('DOMContentLoaded', () => {
             updateOpacity(opacitySlider.value);
+            output.src = BACKGROUND_IMAGE;
+            output.style.opacity = 0.2;
         });
         
         let captureGeo = null;
@@ -411,7 +536,6 @@
                 canvas.width = geo.cw;
                 canvas.height = geo.ch;
                 captureGeo = geo;
-                statusEl.textContent = `Connected — ${geo.cw}x${geo.ch}`;
             }
             
             processing = true;

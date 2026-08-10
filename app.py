@@ -17,8 +17,8 @@ warnings.filterwarnings(
 import cv2
 import mediapipe as mp
 import numpy as np
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Query
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageDraw, ImageOps
 import urllib.parse
@@ -458,7 +458,26 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, color: str =
         except Exception:
             pass
 
-def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_max_dim: int, color: tuple = RED, alpha: float = NAIL_ALPHA):
+@app.post("/paint")
+async def paint_endpoint(
+    file: UploadFile = File(...),
+    color: str = Query("FF0000"),
+    opacity: str = Query(str(NAIL_ALPHA)),
+):
+    """Process an uploaded image and return the painted result."""
+    image_bytes = await file.read()
+    processed, _ = await asyncio.to_thread(
+        _process_frame_with_hand_status,
+        image_bytes,
+        MAX_DETECTION_DIM,
+        ROBOFLOW_MAX_DIM,
+        _hex_to_rgb(color),
+        float(opacity),
+        NAIL_BLUR * 4
+    )
+    return Response(content=processed, media_type="image/jpeg")
+
+def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_max_dim: int, color: tuple = RED, alpha: float = NAIL_ALPHA, blur=NAIL_BLUR):
     """Process a frame and return (processed_bytes, hands_found_bool)."""
     try:
         # Layer 1: Check if the image is blurry. If it is, return the original image.
@@ -481,7 +500,7 @@ def _process_frame_with_hand_status(image_bytes: bytes, max_dim: int, roboflow_m
             predictions = _filter_nails_by_hands(nails, hands_data, width, height)
             if predictions and len(predictions) > 0:
                 print(f"Detected {len(predictions)} nail regions after filtering by hands.")
-                result = _paint_nails(image_bytes, predictions, color=color, alpha=alpha, blur=NAIL_BLUR, preloaded_image=image)
+                result = _paint_nails(image_bytes, predictions, color=color, alpha=alpha, blur=blur, preloaded_image=image)
                 if isinstance(result, bytes):
                     return result, True
     except Exception as e:
