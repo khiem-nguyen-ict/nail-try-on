@@ -140,6 +140,10 @@ runs this workload at real-time rates (15–30 FPS).
 
 ## Docker
 
+The Docker build installs dependencies from pre-built binary wheels only
+(`--only-binary=:all:`) to avoid partial or broken source builds of
+`mediapipe` on Linux.
+
 ```bash
 docker build -t nail-try-on .
 docker run -p 8000:8000 \
@@ -163,6 +167,23 @@ docker run -p 8000:8000 \
 ## Render
 
 A `render.yaml` is included. Connect the repo on [Render.com](https://render.com), set `ROBOFLOW_API_KEY` in the dashboard, and deploy.
+
+> **Note:** `mediapipe` is pinned to `0.10.13` in `requirements.txt` and the
+> Dockerfile installs only binary wheels. This prevents the
+> `AttributeError: module 'mediapipe' has no attribute 'solutions'` error
+> that can occur with unpinned versions or partial source installs on Render.
+
+## Troubleshooting
+
+- **`AttributeError: module 'mediapipe' has no attribute 'solutions'`**
+  Ensure you are using `mediapipe==0.10.13` and that the install used binary
+  wheels. Reinstall with:
+  ```bash
+  pip install --force-reinstall --only-binary=:all: mediapipe==0.10.13
+  ```
+- **MediaPipe fails to import on Linux Docker**
+  The project requires system libraries `libgl1`, `libglib2.0-0`, and
+  `libgomp1`. The provided `Dockerfile` installs these automatically.
 
 ## License
 
