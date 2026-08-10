@@ -27,23 +27,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-if not os.getenv("ROBOFLOW_API_KEY"):
-    raise RuntimeError("ROBOFLOW_API_KEY environment variable is not set. Please set it to your RoBoFlow API key.")
-
-app = FastAPI()
-
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
-@app.get("/")
-async def get_index():
-    with open("static/index.html", "r", encoding="utf-8") as f:
-        html = f.read()
-    html = html.replace("{{MAX_CAPTURE_DIM}}", str(MAX_CAPTURE_DIM))
-    html = html.replace("{{MAX_SEND_FPS}}", str(MAX_SEND_FPS))
-    return HTMLResponse(html)
-
-
 # Default fill color: solid red.
 RED = (255, 0, 0)
 NAIL_ALPHA = float(os.getenv("NAIL_ALPHA", "0.4"))
@@ -57,13 +40,31 @@ ROBOFLOW_MAX_DIM = int(os.getenv("ROBOFLOW_MAX_DIM", "1024"))
 FRAME_SKIPPED_BLUR_THRESHOLD = float(os.getenv("FRAME_SKIPPED_BLUR_THRESHOLD", "50.0"))
 MAX_CAPTURE_DIM = int(os.getenv("MAX_CAPTURE_DIM", "1280"))
 MAX_SEND_FPS = int(os.getenv("MAX_SEND_FPS", "10"))
+# JPEG compression quality (0-100) for captured frames sent to the server
+IMAGE_QUALITY = int(os.getenv("IMAGE_QUALITY", "80"))
 
 TARGET_HSV = np.array([0, 255, 255], dtype=np.float32)
-
 
 # Configuration
 URL = "https://serverless.roboflow.com/thanh-khiem-nguyen/nails_segmentation-m8ew1-1-rfdetr-seg-large-t1"
 PARAMS = {"api_key": os.getenv("ROBOFLOW_API_KEY", ""), "confidence": YOLO_CONFIDENCE_THRESHOLD}
+
+if not os.getenv("ROBOFLOW_API_KEY"):
+    raise RuntimeError("ROBOFLOW_API_KEY environment variable is not set. Please set it to your RoBoFlow API key.")
+
+app = FastAPI()
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/")
+async def get_index():
+    with open("static/index.html", "r", encoding="utf-8") as f:
+        html = f.read()
+    html = html.replace("{{MAX_CAPTURE_DIM}}", str(MAX_CAPTURE_DIM))
+    html = html.replace("{{MAX_SEND_FPS}}", str(MAX_SEND_FPS))
+    html = html.replace("{{NAIL_ALPHA}}", str(NAIL_ALPHA))
+    html = html.replace("{{IMAGE_QUALITY}}", str(IMAGE_QUALITY))
+    return HTMLResponse(html)
 
 mp_hands = mp.solutions.hands
 hands_detector = mp_hands.Hands(
@@ -116,7 +117,7 @@ def _detect_nails(image_source: Union[str, bytes], max_dim: int = 0):
             with ImageOps.exif_transpose(Image.open(BytesIO(image_bytes))) as src:
                 resized = src.convert("RGB").resize((new_w, new_h), Image.Resampling.LANCZOS)
             buf = BytesIO()
-            resized.save(buf, format="JPEG", quality=90)
+            resized.save(buf, format="JPEG", quality=80)
             send_bytes = buf.getvalue()
 
     base64_encoded = base64.b64encode(send_bytes)
@@ -263,7 +264,7 @@ def _paint_nails(
 
     if isinstance(image_source, bytes):
         buf = BytesIO()
-        image.save(buf, format="JPEG", quality=90)
+        image.save(buf, format="JPEG", quality=80)
         return buf.getvalue()
 
     return image
