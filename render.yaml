@@ -23,7 +23,7 @@ services:
       - key: ROBOFLOW_MAX_DIM
         value: 1024
       - key: FRAME_SKIPPED_BLUR_THRESHOLD
-        value: 50.0
+        value: 30.0
       - key: MAX_CAPTURE_DIM
         value: 1280
       - key: MAX_SEND_FPS
