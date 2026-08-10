@@ -15,7 +15,7 @@ warnings.filterwarnings(
 )
 
 import cv2
-from mediapipe.solutions import hands as mp_hands
+import mediapipe as mp
 import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
