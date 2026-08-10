@@ -11,10 +11,40 @@ A real-time nail polish try-on web app built with FastAPI, MediaPipe, and RoBoFl
 - **Performance optimizations** for shared hosting: frame rate limiting, downscaled detection, and no-hand cooldown
 - **Configurable behavior** through environment variables
 
+## Models
+
+This project relies on two machine learning components:
+
+### MediaPipe Hands
+
+Hand detection is performed using [MediaPipe Hands](https://developers.google.com/mediapipe/solutions/vision/hand_landmarker). The model runs locally in the backend and returns 21 hand landmarks per detected hand, from which the five fingertip positions are extracted.
+
+- **Library version:** `mediapipe==0.10.13`
+- **Configuration:** `static_image_mode=False`, `max_num_hands=2`, `model_complexity=0`
+- **Optimization:** Detection runs on a downscaled version of the input frame (`MAX_DETECTION_DIM`) to reduce CPU usage, and landmark coordinates are mapped back to the original frame size.
+
+### RoBoFlow RF-DETR Nail Segmentation
+
+Nail regions are segmented using a [RoBoFlow](https://roboflow.com/) serverless inference endpoint running the **RF-DETR** (Real-Time Detection Transformer) segmentation model. The model is hosted on RoBoFlow's infrastructure and accessed via HTTP POST.
+
+- **Model:** `thanh-khiem-nguyen/nails_segmentation-m8ew1-1-rfdetr-seg-large-t1`
+- **Output:** Polygon masks for detected nail regions with confidence scores
+- **Filtering:** Only predictions that contain at least one fingertip (from MediaPipe) are kept, using a configurable proximity threshold (`SPACE_DETECTION_THRESHOLD`)
+- **Optimization:** Images sent to the API are downscaled to `ROBOFLOW_MAX_DIM` to reduce latency and response size
+
+## Best Output Samples
+(Please refer to the nails_beauty.ipynb notebook.)
+### Input Image
+![Input Image](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand.webp?raw=true)
+
+### Generated Samples (Slow Method)
+![Sample 1](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-nails-1.webp?raw=true)
+![Sample 2](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-nails-2.webp?raw=true)
+
 ## Requirements
 
 - Python 3.11+
-- A [RoBoFlow API key](https://app.roboflow.com/)
+- A [RoBoFlow API key](https://app.roboflow.com/) - because I don't have the strong GPU hosting
 
 ## Setup
 
