@@ -11,10 +11,19 @@ A real-time nail polish try-on web app built with FastAPI, MediaPipe, and RoBoFl
 - **Performance optimizations** for shared hosting: frame rate limiting, downscaled detection, and no-hand cooldown
 - **Configurable behavior** through environment variables
 
+## Best Output Samples
+(Please refer to the nails_beauty.ipynb notebook.)
+### Input Image
+![Input Image](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand.webp?raw=true)
+
+### Generated Samples (Slow Method)
+![Sample 1](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-nails-1.webp?raw=true)
+![Sample 2](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-nails-2.webp?raw=true)
+
 ## Requirements
 
 - Python 3.11+
-- A [RoBoFlow API key](https://app.roboflow.com/)
+- A [RoBoFlow API key](https://app.roboflow.com/) - because I don't have the strong GPU hosting
 
 ## Setup
 
