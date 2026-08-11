@@ -58,7 +58,7 @@ hand using a feathered mask and multiply blending to retain natural shadows.
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.12+
 - A [RoBoFlow API key](https://app.roboflow.com/) - because I don't have the strong GPU hosting
 
 ## Setup
@@ -74,8 +74,13 @@ Create a `.env` file (see `.env.example`).
 ## Running
 
 ```bash
-uvicorn app:app --host 0.0.0.0 --port 8000
+python -m uvicorn nail_try_on.api.main:app --host 0.0.0.0 --port 8000
 ```
+
+> **Note:** Always run uvicorn via `python -m uvicorn` (or `.venv/bin/uvicorn`),
+> not bare `uvicorn`. The bare command may resolve to a system-wide Python
+> installation that does not have the venv's dependencies (e.g. `cv2`),
+> causing `ModuleNotFoundError`.
 
 Then open [http://localhost:8000](http://localhost:8000).
 
@@ -114,7 +119,6 @@ FastAPI app at `/`.
 | `MAX_PROCESS_FPS` | `20` | Max frames per second the server will process per WebSocket connection. |
 | `NO_HAND_COOLDOWN` | `1.0` | Seconds to skip processing after no hands are detected. |
 | `ROBOFLOW_MAX_DIM` | `1024` | Max pixel dimension for images sent to the RoBoFlow API. Lower = faster API response. |
-| `FRAME_SKIPPED_BLUR_THRESHOLD` | `50.0` | Laplacian variance threshold below which a frame is considered too blurry and skipped. Lower = stricter (more frames skipped). |
 | `MAX_CAPTURE_DIM` | `1280` | Max pixel dimension for the captured frame sent from the browser to the backend. |
 | `MAX_SEND_FPS` | `10` | Max frames per second the browser will send to the backend over WebSocket. |
 | `IMAGE_QUALITY` | `80` | JPEG compression quality (0–100) for frames sent from the backend to the browser. Lower = smaller payload, lower latency. |
@@ -124,11 +128,8 @@ FastAPI app at `/`.
 Each frame from the browser WebSocket goes through this pipeline:
 
 1. **Receive frame** — The browser sends a JPEG frame over `/ws/{session_id}`.
-2. **Blur check** — The frame is evaluated using Laplacian variance. If it is below
-   `FRAME_SKIPPED_BLUR_THRESHOLD`, the original frame is returned immediately and
-   processing is skipped, saving CPU.
-3. **Decode once** — The frame is decoded from JPEG bytes into a PIL Image.
-4. **Hand detection** — MediaPipe Hands runs on a downscaled version of the frame
+2. **Decode once** — The frame is decoded from JPEG bytes into a PIL Image.
+3. **Hand detection** — MediaPipe Hands runs on a downscaled version of the frame
    (`MAX_DETECTION_DIM`) to detect hands and extract fingertip landmarks.
    If no hands are found, the original frame is returned.
 5. **Nail segmentation** — The full frame is sent to the RoBoFlow RF-DETR
@@ -201,8 +202,7 @@ docker run -p 8000:8000 \
   -e MAX_DETECTION_DIM=320 \
   -e MAX_PROCESS_FPS=20 \
   -e NO_HAND_COOLDOWN=1.0 \
-  -e ROBOFLOW_MAX_DIM=1024 \
-  -e FRAME_SKIPPED_BLUR_THRESHOLD=50.0 \
+   -e ROBOFLOW_MAX_DIM=1024 \
    -e MAX_CAPTURE_DIM=1280 \
   -e MAX_SEND_FPS=10 \
   -e IMAGE_QUALITY=80 \
