@@ -33,13 +33,28 @@ Nail regions are segmented using a [RoBoFlow](https://roboflow.com/) serverless 
 - **Optimization:** Images sent to the API are downscaled to `ROBOFLOW_MAX_DIM` to reduce latency and response size
 
 ## Best Output Samples
-(Please refer to the nails_beauty.ipynb notebook.)
+
+The `nails_beauty.ipynb` notebook demonstrates two offline generation methods
+using the same RoBoFlow nail segmentation mask:
+
 ### Input Image
 ![Input Image](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand.webp?raw=true)
 
-### Generated Samples (Slow Method)
+### Nail Segmentation Mask
+![Nail Mask](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/nail_mask.webp?raw=true)
+
+### Method 1: SDXL Inpainting (Solid Color)
+Uses Stable Diffusion XL inpainting with text prompts to generate realistic
+painted nails while preserving hand lighting and texture.
+
 ![Sample 1](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-nails-1.webp?raw=true)
 ![Sample 2](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-nails-2.webp?raw=true)
+
+### Method 2: Pattern Overlay (Nail Art)
+Tiles a pattern image across the nail regions and blends it with the original
+hand using a feathered mask and multiply blending to retain natural shadows.
+
+![Nail Pattern](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/nail_pattern.jpg?raw=true)
 
 ## Requirements
 
