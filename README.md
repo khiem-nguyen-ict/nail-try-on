@@ -56,6 +56,39 @@ hand using a feathered mask and multiply blending to retain natural shadows.
 
 ![Nail Pattern](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/nail_pattern.jpg?raw=true)
 
+## Project Structure
+
+The backend is organized as a Python package under `app/` to separate
+configuration, services, utilities, and API wiring:
+
+```
+app/
+  __init__.py
+  config.py          # Environment variables, constants, and RoBoFlow config
+  main.py            # FastAPI app factory, routes, and ASGI entrypoint
+  services/
+    __init__.py
+    frame_processor.py  # Frame pipeline orchestration
+    hand_detector.py    # MediaPipe hand detection and blur check
+    nail_detector.py    # RoBoFlow API client and nail filtering
+    nail_painter.py     # Color transfer and glossy nail painting
+  utils/
+    __init__.py
+    color.py            # Hex-to-RGB color helper
+```
+
+- **`app/config.py`** loads environment variables via `python-dotenv` and
+  exposes typed constants used across the app.
+- **`app/services/`** contains the processing pipeline:
+  hand detection, nail segmentation, nail painting, and frame orchestration.
+- **`app/utils/`** holds small pure helpers shared by the services.
+- **`app/main.py`** defines the FastAPI app, mounts static files, and
+  registers the HTTP and WebSocket routes. The ASGI app object is exported
+  as `app.main:app`.
+
+The root-level `app.py` was removed to avoid shadowing the `app/` package.
+The Docker entrypoint and local run command now reference `app.main:app`.
+
 ## Requirements
 
 - Python 3.11+
@@ -65,7 +98,8 @@ hand using a feathered mask and multiply blending to retain natural shadows.
 
 ```bash
 python3.12 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
@@ -74,7 +108,7 @@ Create a `.env` file (see `.env.example`).
 ## Running
 
 ```bash
-uvicorn app:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 Then open [http://localhost:8000](http://localhost:8000).
