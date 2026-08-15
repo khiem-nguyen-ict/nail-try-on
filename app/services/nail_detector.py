@@ -1,6 +1,5 @@
 import base64
 import json
-import os
 import urllib.parse
 import urllib.request
 from io import BytesIO
@@ -10,13 +9,11 @@ from PIL import Image, ImageOps
 from app.config import (
     PARAMS,
     URL,
-    ROBOFLOW_MAX_DIM,
-    YOLO_CONFIDENCE_THRESHOLD,
     SPACE_DETECTION_THRESHOLD,
 )
 
 
-def _detect_nails(image_source: Union[str, bytes], max_dim: int = 0):
+def detect_nails(image_source: Union[str, bytes], max_dim: int = 0):
     """Send image to the RoBoFlow API and return the inference result.
 
     Args:
@@ -82,7 +79,7 @@ def _point_in_polygon(x, y, polygon, width, height):
     return distance < threshold
 
 
-def _filter_nails_by_hands(nails_result, hands_data, width, height):
+def filter_nails_by_hands(nails_result, hands_data, width, height):
     """Filter nail predictions to only those containing at least one fingertip."""
     if not hands_data:
         return []
