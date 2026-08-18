@@ -15,11 +15,20 @@ mp_hands = mp.solutions.hands
 hands_detector = mp_hands.Hands(
     static_image_mode=False,
     max_num_hands=2,
-    model_complexity=0,
+    model_complexity=1,
     min_detection_confidence=0.8
 )
 
 FINGERTIP_IDS = [4, 8, 12, 16, 20]
+
+# Map each fingertip ID to its corresponding DIP (or IP for thumb) landmark ID
+FINGERTIP_DIP_MAP = {
+    4: 3,   # Thumb: TIP -> IP
+    8: 7,   # Index: TIP -> DIP
+    12: 11, # Middle: TIP -> DIP
+    16: 15, # Ring: TIP -> DIP
+    20: 19, # Pinky: TIP -> DIP
+}
 
 
 def _is_blur(image_bytes: bytes, threshold: float = FRAME_SKIPPED_BLUR_THRESHOLD) -> bool:
@@ -50,7 +59,7 @@ def _is_blur(image_bytes: bytes, threshold: float = FRAME_SKIPPED_BLUR_THRESHOLD
         return True
 
 
-def _detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_image: Union[Image.Image, None] = None):
+def detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_image: Union[Image.Image, None] = None):
     """Detect hands in an image and return finger tips in JSON format.
 
     Args:
@@ -85,7 +94,7 @@ def _detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_i
     image_np = np.array(detection_image)
 
     results = hands_detector.process(image_np)
-
+    
     output = []
     if results.multi_hand_landmarks:
         for idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
@@ -100,11 +109,20 @@ def _detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_i
 
             for lm_id in FINGERTIP_IDS:
                 lm = hand_landmarks.landmark[lm_id]
+                dip_id = FINGERTIP_DIP_MAP[lm_id]
+                dip_lm = hand_landmarks.landmark[dip_id]
+
+                # Angle of the fingertip segment (DIP -> TIP) in degrees
+                dx = lm.x - dip_lm.x
+                dy = lm.y - dip_lm.y
+                angle_deg = round(np.degrees(np.arctan2(dy, dx)), 2)
+
                 hand_entry["fingertips"].append({
                     "landmark_id": lm_id,
                     "x": round(lm.x, 6),
                     "y": round(lm.y, 6),
-                    "z": round(lm.z, 6)
+                    "z": round(lm.z, 6),
+                    "a": angle_deg
                 })
 
             output.append(hand_entry)

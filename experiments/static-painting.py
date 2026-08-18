@@ -1,0 +1,235 @@
+import json
+import sys
+import os
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from app.config import MAX_DETECTION_DIM
+from app.services.hand_detector import detect_hands
+from app.services.nail_detector import detect_nails, filter_nails_by_hands
+from PIL import Image, ImageDraw, ImageFilter, ImageChops, ImageOps
+import math
+
+ORIGINAL_IMAGE = "sample-images/hand-2.jpg"
+REFERENCE_IMAGE = "sample-images/sample-2.png"
+
+def load_or_compute(json_path, compute_fn):
+    if os.path.exists(json_path):
+        with open(json_path, "r") as f:
+            return json.load(f)
+    data = compute_fn()
+    if data:
+        with open(json_path, "w") as f:
+            json.dump(data, f, indent=2)
+    return data
+
+
+def get_rect_boundary(start_x, start_y, dx, dy, rect_x, rect_y, rect_w, rect_h):
+    if dx == 0 and dy == 0:
+        return None
+    t_values = []
+    eps = 1e-9
+    if dx > eps:
+        t = (rect_x + rect_w - start_x) / dx
+        if t > 0:
+            y_hit = start_y + t * dy
+            if rect_y <= y_hit <= rect_y + rect_h:
+                t_values.append(t)
+    elif dx < -eps:
+        t = (rect_x - start_x) / dx
+        if t > 0:
+            y_hit = start_y + t * dy
+            if rect_y <= y_hit <= rect_y + rect_h:
+                t_values.append(t)
+    if dy > eps:
+        t = (rect_y + rect_h - start_y) / dy
+        if t > 0:
+            x_hit = start_x + t * dx
+            if rect_x <= x_hit <= rect_x + rect_w:
+                t_values.append(t)
+    elif dy < -eps:
+        t = (rect_y - start_y) / dy
+        if t > 0:
+            x_hit = start_x + t * dx
+            if rect_x <= x_hit <= rect_x + rect_w:
+                t_values.append(t)
+    if t_values:
+        t_max = max(t_values)
+        return (start_x + t_max * dx, start_y + t_max * dy)
+    return None
+
+
+def compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh):
+    if not points:
+        return []
+    angle_rad = math.radians(float(angle))
+    ux = math.cos(angle_rad)
+    uy = math.sin(angle_rad)
+    projections = []
+    for x, y in points:
+        dx = x - cx
+        dy = y - cy
+        proj = dx * ux + dy * uy
+        projections.append((proj, x, y, dx, dy))
+    if not projections:
+        return [(x - shifted_x, y - shifted_y) for x, y in points]
+    min_proj = min(p[0] for p in projections)
+    max_proj = max(p[0] for p in projections)
+    cut_proj = (min_proj + max_proj) / 2
+    adjusted = []
+    for proj, x, y, dx, dy in projections:
+        if proj > cut_proj and (dx != 0 or dy != 0):
+            boundary = get_rect_boundary(cx, cy, dx, dy, shifted_x, shifted_y, rw, rh)
+            if boundary:
+                new_x, new_y = boundary
+            else:
+                new_x, new_y = x, y
+        else:
+            new_x, new_y = x, y
+        adjusted.append((new_x - shifted_x, new_y - shifted_y))
+    return adjusted
+
+
+def draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h):
+    ref_w = max(w, h)
+    _rx, _rh = ref_image.size
+    ref_height = ref_w * _rh / _rx
+    resized_img = ref_image.resize((int(ref_w), int(ref_height)), Image.Resampling.LANCZOS)
+
+    rotated_img = resized_img.rotate(-float(angle + 90), expand=True)
+
+    r, g, b, a = rotated_img.split()
+    a = a.point(lambda p: int(p * 1))
+    a = a.filter(ImageFilter.GaussianBlur(radius=3))
+    rotated_img = Image.merge("RGBA", (r, g, b, a))
+    rw, rh = rotated_img.size
+
+    paste_x = int(cx - rw / 2)
+    paste_y = int(cy - rh / 2)
+
+    shift_center_nail_distance = (h - ref_height) / 2.8
+
+    angle_rad = math.radians(float(angle))
+    ux = math.cos(angle_rad)
+    uy = math.sin(angle_rad)
+
+    shifted_x = int(paste_x - shift_center_nail_distance * ux)
+    shifted_y = int(paste_y - shift_center_nail_distance * uy)
+
+    nail_alpha = rotated_img.split()[-1]
+
+    polygon_mask = Image.new("L", rotated_img.size, 0)
+    polygon_draw = ImageDraw.Draw(polygon_mask)
+    adjusted_points = compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh)
+    polygon_draw.polygon(adjusted_points, fill=255)
+
+    final_mask = ImageChops.multiply(polygon_mask, nail_alpha)
+    base_image.paste(rotated_img, (shifted_x, shifted_y), final_mask)
+
+    polygon_mask = Image.new("L", rotated_img.size, 0)
+    polygon_draw = ImageDraw.Draw(polygon_mask)
+    adjusted_points = [(x - shifted_x, y - shifted_y) for x, y in points]
+
+    polygon_draw.polygon(adjusted_points, fill=255)
+    polygon_mask = polygon_mask.filter(ImageFilter.GaussianBlur(radius=8))
+    final_mask = ImageChops.multiply(polygon_mask, nail_alpha)
+    base_image.paste(rotated_img, (shifted_x, shifted_y), final_mask)
+
+
+def draw_nail_debug(mask_draw, points, cx, cy, angle, w, h):
+    debug_color = (0, 255, 0)
+    mask_draw.polygon(points, fill=(255, 255, 255))
+
+    angle_rad = math.radians(float(angle))
+    ux = math.cos(angle_rad)
+    uy = math.sin(angle_rad)
+    px = -uy
+    py = ux
+
+    length = math.sqrt(float(w) ** 2 + float(h) ** 2)
+
+    min_proj = float("inf")
+    bottom_x, bottom_y = points[0]
+    for pt_x, pt_y in points:
+        proj = pt_x * ux + pt_y * uy
+        if proj < min_proj:
+            min_proj = proj
+            bottom_x, bottom_y = pt_x, pt_y
+
+    end_x = bottom_x + length * ux
+    end_y = bottom_y + length * uy
+
+    mask_draw.line([(cx, cy), (end_x, end_y)], fill=debug_color, width=4)
+    head_size = max(8, length * 0.1)
+    left_x = end_x - head_size * math.cos(angle_rad - math.radians(30))
+    left_y = end_y - head_size * math.sin(angle_rad - math.radians(30))
+    right_x = end_x - head_size * math.cos(angle_rad + math.radians(30))
+    right_y = end_y - head_size * math.sin(angle_rad + math.radians(30))
+    mask_draw.polygon([(end_x, end_y), (left_x, left_y), (right_x, right_y)], fill=debug_color)
+
+    t = (bottom_x - cx) * ux + (bottom_y - cy) * uy
+    mid_x = cx + t * ux
+    mid_y = cy + t * uy
+
+    mask_draw.ellipse(
+        [mid_x - 8, mid_y - 8, mid_x + 8, mid_y + 8],
+        fill=(255, 0, 0),
+    )
+
+    line_x1 = mid_x - px * w
+    line_y1 = mid_y - py * w
+    line_x2 = mid_x + px * w
+    line_y2 = mid_y + py * w
+    mask_draw.line([(line_x1, line_y1), (line_x2, line_y2)], fill=debug_color, width=4)
+
+
+def save_and_show_results(mask_image, base_image):
+    base_image.save("sample-images/static-nail-painting.jpg")
+    base_image.show()
+
+
+def main():
+    base_image = ImageOps.exif_transpose(Image.open(ORIGINAL_IMAGE)).convert("RGB")
+    ref_image = Image.open(REFERENCE_IMAGE).convert("RGBA")
+    with open(ORIGINAL_IMAGE, "rb") as f:
+        image_bytes = f.read()
+
+    width, height = base_image.size
+
+    hands_data = load_or_compute(
+        ORIGINAL_IMAGE + ".hands_data.json",
+        lambda: detect_hands(image_bytes, max_dim=MAX_DETECTION_DIM),
+    )
+    if not hands_data:
+        print("No hands detected in the image. Please provide an image with visible hands.")
+        exit(1)
+
+    filtered_nails = load_or_compute(
+        ORIGINAL_IMAGE + ".nails_data.json",
+        lambda: filter_nails_by_hands(
+            detect_nails(image_bytes, max_dim=MAX_DETECTION_DIM),
+            hands_data,
+            width,
+            height,
+        ),
+    )
+
+    mask_image = Image.new("RGB", (width, height), (0, 0, 0))
+    mask_draw = ImageDraw.Draw(mask_image)
+
+    for nail in filtered_nails:
+        points = [(float(p["x"]), float(p["y"])) for p in nail.get("points", [])]
+        cx = nail.get("x")
+        cy = nail.get("y")
+        angle = nail.get("angle")
+        w = nail.get("width", 0)
+        h = nail.get("height", 0)
+
+        draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h)
+        draw_nail_debug(mask_draw, points, cx, cy, angle, w, h)
+
+    save_and_show_results(mask_image, base_image)
+
+
+if __name__ == "__main__":
+    main()
