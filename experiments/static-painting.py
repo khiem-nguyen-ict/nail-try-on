@@ -12,14 +12,14 @@ from app.services.nail_detector import detect_nails, filter_nails_by_hands
 from PIL import Image, ImageDraw, ImageFilter, ImageChops, ImageOps, ImageEnhance, ImageStat, ImageFont
 import math
 
-GAUSSIAN_BLUR=6
+GAUSSIAN_BLUR=12
 
 # Color matching defaults
 COLOR_MATCH_HUE_SHIFT = 0.04       # max hue shift toward base image (0-1, fraction of hue circle)
 COLOR_MATCH_SATURATION = 0.15      # how much to blend saturation toward base image (0-1)
 COLOR_MATCH_BRIGHTNESS = 0.2       # how much to blend brightness toward base image (0-1)
 
-ORIGINAL_IMAGE = "sample-images/hand-2.jpg"
+ORIGINAL_IMAGE = "sample-images/hand-3.jpg"
 REFERENCE_IMAGE = "sample-images/sample-2.png"
 
 DEBUG_FONT_PATHS = [
@@ -98,6 +98,11 @@ def apply_color_matching(nail_img, base_profile):
 
     hsv_matched = Image.merge("HSV", (h_new, s_new, v_new))
     rgb_matched = hsv_matched.convert("RGB")
+
+    # Set alpha to 0.9 and apply Gaussian blur
+    a = a.point(lambda x: int(x * 0.95))
+    a = a.filter(ImageFilter.GaussianBlur(radius=2))
+
     return Image.merge("RGBA", (*rgb_matched.split(), a))
 
 def load_or_compute(json_path, compute_fn):
@@ -178,7 +183,10 @@ def compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh)
 
 
 def draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z=None, base_color_profile=None):
-    ref_w = min(w, h)
+    if (angle <= -45 and angle >= 45) or (angle >= 135 and angle < 225) or (angle >= -225 and angle >= -153):
+        ref_w = h
+    else:
+        ref_w = w
     _rx, _rh = ref_image.size
     ref_height = ref_w * _rh / _rx
     resized_img = ref_image.resize((int(ref_w), int(ref_height)), Image.Resampling.LANCZOS)
@@ -270,6 +278,7 @@ def draw_nail_debug(mask_draw, points, cx, cy, angle, w, h):
     mask_draw.line([(line_x1, line_y1), (line_x2, line_y2)], fill=debug_color, width=4)
 
     mask_draw.text((cx + 20, cy + 20), f"{int(w)}x{int(h)}", fill=(255, 0, 0), font=get_debug_font(length))
+    mask_draw.text((cx + 20, cy - 250), f"{int(angle)}°", fill=(0, 255, 255), font=get_debug_font(length))
 
 
 def save_and_show_results(mask_image, base_image, output_path=None):
