@@ -2,6 +2,7 @@ import json
 import sys
 import os
 import colorsys
+import argparse
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -11,17 +12,15 @@ from app.services.nail_detector import detect_nails, filter_nails_by_hands
 from PIL import Image, ImageDraw, ImageFilter, ImageChops, ImageOps, ImageEnhance, ImageStat
 import math
 
-
-ORIGINAL_IMAGE = "sample-images/hand.webp"
-REFERENCE_IMAGE = "sample-images/sample-2.png"
-
-
 GAUSSIAN_BLUR=12
 
 # Color matching defaults
 COLOR_MATCH_HUE_SHIFT = 0.04       # max hue shift toward base image (0-1, fraction of hue circle)
 COLOR_MATCH_SATURATION = 0.15      # how much to blend saturation toward base image (0-1)
 COLOR_MATCH_BRIGHTNESS = 0.2       # how much to blend brightness toward base image (0-1)
+
+ORIGINAL_IMAGE = "sample-images/hand-2.jpg"
+REFERENCE_IMAGE = "sample-images/sample-2.png"
 
 
 def get_base_image_color_profile(base_image):
@@ -254,29 +253,31 @@ def draw_nail_debug(mask_draw, points, cx, cy, angle, w, h):
     mask_draw.line([(line_x1, line_y1), (line_x2, line_y2)], fill=debug_color, width=4)
 
 
-def save_and_show_results(mask_image, base_image):
-    base_image.save("sample-images/static-nail-painting.jpg")
-    base_image.show()
+def save_and_show_results(mask_image, base_image, output_path=None):
+    if output_path is None:
+        output_path = "sample-images/static-nail-painting.jpg"
+    base_image.save(output_path)
+    print(f"Saved: {output_path}")
 
 
-def main():
-    base_image = ImageOps.exif_transpose(Image.open(ORIGINAL_IMAGE)).convert("RGB")
-    ref_image = Image.open(REFERENCE_IMAGE).convert("RGBA")
-    with open(ORIGINAL_IMAGE, "rb") as f:
+def main(original_image, reference_image, output_path=None):
+    base_image = ImageOps.exif_transpose(Image.open(original_image)).convert("RGB")
+    ref_image = Image.open(reference_image).convert("RGBA")
+    with open(original_image, "rb") as f:
         image_bytes = f.read()
 
     width, height = base_image.size
 
     hands_data = load_or_compute(
-        ORIGINAL_IMAGE + ".hands_data.json",
+        original_image + ".hands_data.json",
         lambda: detect_hands(image_bytes, max_dim=MAX_DETECTION_DIM),
     )
     if not hands_data:
-        print("No hands detected in the image. Please provide an image with visible hands.")
-        exit(1)
+        print(f"No hands detected in {original_image}. Skipping.")
+        return False
 
     filtered_nails = load_or_compute(
-        ORIGINAL_IMAGE + ".nails_data.json",
+        original_image + ".nails_data.json",
         lambda: filter_nails_by_hands(
             detect_nails(image_bytes, max_dim=MAX_DETECTION_DIM),
             hands_data,
@@ -284,6 +285,9 @@ def main():
             height,
         ),
     )
+    if not filtered_nails:
+        print(f"No nails detected in {original_image}. Skipping.")
+        return False
 
     mask_image = Image.new("RGB", (width, height), (0, 0, 0))
     mask_draw = ImageDraw.Draw(mask_image)
@@ -303,8 +307,54 @@ def main():
         draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z, base_color_profile)
         draw_nail_debug(mask_draw, points, cx, cy, angle, w, h)
 
-    save_and_show_results(mask_image, base_image)
+    save_and_show_results(mask_image, base_image, output_path)
+    return True
+
+
+def process_directory(directory, reference_image, output_dir=None):
+    """Process all images in a directory."""
+    import glob
+    image_extensions = ["*.jpg", "*.jpeg", "*.png", "*.webp"]
+    files = []
+    for ext in image_extensions:
+        files.extend(glob.glob(os.path.join(directory, ext)))
+        files.extend(glob.glob(os.path.join(directory, ext.upper())))
+    
+    # Remove duplicates and sort
+    files = sorted(set(files))
+    
+    if not files:
+        print(f"No images found in {directory}")
+        return
+    
+    print(f"Found {len(files)} images in {directory}")
+    
+    for image_path in files:
+        # Skip already processed images
+        basename = os.path.basename(image_path)
+        if output_dir:
+            output_path = os.path.join(output_dir, f"painted-{basename}")
+        else:
+            output_path = None
+        
+        print(f"\nProcessing: {image_path}")
+        try:
+            main(image_path, reference_image, output_path)
+        except Exception as e:
+            print(f"Error processing {image_path}: {e}")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Static nail painting with color matching")
+    parser.add_argument("original_image", nargs="?", default=None, help="Path to the original hand image")
+    parser.add_argument("reference_image", nargs="?", default=REFERENCE_IMAGE, help="Path to the reference nail polish image")
+    parser.add_argument("--output", "-o", default=None, help="Output path for the painted image")
+    parser.add_argument("--directory", "-d", default=None, help="Process all images in a directory")
+    args = parser.parse_args()
+    
+    if args.directory:
+        process_directory(args.directory, args.reference_image, args.output)
+    elif args.original_image:
+        main(args.original_image, args.reference_image, args.output)
+    else:
+        main(ORIGINAL_IMAGE, REFERENCE_IMAGE)
