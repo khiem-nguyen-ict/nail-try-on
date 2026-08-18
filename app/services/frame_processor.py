@@ -7,7 +7,7 @@ from app.config import (
     NAIL_ALPHA,
     NAIL_BLUR,
 )
-from app.services.hand_detector import _detect_hands, is_blur
+from app.services.hand_detector import detect_hands, is_blur
 from app.services.nail_detector import detect_nails, filter_nails_by_hands
 from app.services.nail_painter import paint_nails
 

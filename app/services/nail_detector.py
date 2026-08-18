@@ -87,7 +87,11 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
     fingertips_px = []
     for hand in hands_data:
         for tip in hand.get("fingertips", []):
-            fingertips_px.append((tip["x"] * width, tip["y"] * height))
+            fingertips_px.append({
+                "x": tip["x"] * width,
+                "y": tip["y"] * height,
+                "a": tip["a"],
+            })
 
     filtered = []
     for pred in nails_result.get("predictions", []):
@@ -96,13 +100,31 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
             continue
         polygon = [(float(p["x"]), float(p["y"])) for p in points]
 
-        contained = False
-        for fx, fy in fingertips_px:
-            if _point_in_polygon(fx, fy, polygon, width, height):
-                contained = True
+        matched_angle = None
+        for ft in fingertips_px:
+            if _point_in_polygon(ft["x"], ft["y"], polygon, width, height):
+                matched_angle = ft["a"]
                 break
 
-        if contained:
-            filtered.append(pred)
+        if matched_angle is not None:
+            pred_copy = dict(pred)
+            pred_copy["angle"] = matched_angle
+
+            rounded_points = []
+            for p in pred_copy.get("points", []):
+                rounded_point = {
+                    "x": round(float(p.get("x", 0)), 12),
+                    "y": round(float(p.get("y", 0)), 12),
+                }
+                for k, v in p.items():
+                    if k not in ("x", "y"):
+                        rounded_point[k] = v
+                rounded_points.append(rounded_point)
+            pred_copy["points"] = rounded_points
+
+            for key in ("mask_format", "confidence", "class", "class_id", "detection_id"):
+                pred_copy.pop(key, None)
+
+            filtered.append(pred_copy)
 
     return filtered
