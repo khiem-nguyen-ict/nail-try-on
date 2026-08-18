@@ -19,7 +19,7 @@ COLOR_MATCH_HUE_SHIFT = 0.04       # max hue shift toward base image (0-1, fract
 COLOR_MATCH_SATURATION = 0.15      # how much to blend saturation toward base image (0-1)
 COLOR_MATCH_BRIGHTNESS = 0.2       # how much to blend brightness toward base image (0-1)
 
-ORIGINAL_IMAGE = "sample-images/hand-3.jpg"
+ORIGINAL_IMAGE = "sample-images/hand-2.jpg"
 REFERENCE_IMAGE = "sample-images/sample-2.png"
 
 DEBUG_FONT_PATHS = [
