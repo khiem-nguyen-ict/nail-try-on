@@ -9,10 +9,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from app.config import MAX_DETECTION_DIM
 from app.services.hand_detector import detect_hands
 from app.services.nail_detector import detect_nails, filter_nails_by_hands
-from PIL import Image, ImageDraw, ImageFilter, ImageChops, ImageOps, ImageEnhance, ImageStat
+from PIL import Image, ImageDraw, ImageFilter, ImageChops, ImageOps, ImageEnhance, ImageStat, ImageFont
 import math
 
-GAUSSIAN_BLUR=12
+GAUSSIAN_BLUR=6
 
 # Color matching defaults
 COLOR_MATCH_HUE_SHIFT = 0.04       # max hue shift toward base image (0-1, fraction of hue circle)
@@ -21,6 +21,23 @@ COLOR_MATCH_BRIGHTNESS = 0.2       # how much to blend brightness toward base im
 
 ORIGINAL_IMAGE = "sample-images/hand-2.jpg"
 REFERENCE_IMAGE = "sample-images/sample-2.png"
+
+DEBUG_FONT_PATHS = [
+    "/Library/Fonts/Arial.ttf",
+    "/System/Library/Fonts/Helvetica.ttc",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+]
+
+
+def get_debug_font(length):
+    """Return a font scaled proportionally to the nail length."""
+    font_size = max(12, int(length / 8))
+    for path in DEBUG_FONT_PATHS:
+        try:
+            return ImageFont.truetype(path, font_size)
+        except Exception:
+            continue
+    return ImageFont.load_default(size=font_size)
 
 
 def get_base_image_color_profile(base_image):
@@ -161,7 +178,7 @@ def compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh)
 
 
 def draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z=None, base_color_profile=None):
-    ref_w = max(w, h)
+    ref_w = min(w, h)
     _rx, _rh = ref_image.size
     ref_height = ref_w * _rh / _rx
     resized_img = ref_image.resize((int(ref_w), int(ref_height)), Image.Resampling.LANCZOS)
@@ -252,12 +269,19 @@ def draw_nail_debug(mask_draw, points, cx, cy, angle, w, h):
     line_y2 = mid_y + py * w
     mask_draw.line([(line_x1, line_y1), (line_x2, line_y2)], fill=debug_color, width=4)
 
+    mask_draw.text((cx + 20, cy + 20), f"{int(w)}x{int(h)}", fill=(255, 0, 0), font=get_debug_font(length))
+
 
 def save_and_show_results(mask_image, base_image, output_path=None):
     if output_path is None:
         output_path = "sample-images/static-nail-painting.jpg"
     base_image.save(output_path)
+    base_image.show()
+    mask_path = output_path.replace(os.path.splitext(output_path)[1], "-mask" + os.path.splitext(output_path)[1])
+    mask_image.save(mask_path)
+    mask_image.show()
     print(f"Saved: {output_path}")
+    print(f"Saved mask: {mask_path}")
 
 
 def main(original_image, reference_image, output_path=None):
@@ -310,51 +334,5 @@ def main(original_image, reference_image, output_path=None):
     save_and_show_results(mask_image, base_image, output_path)
     return True
 
-
-def process_directory(directory, reference_image, output_dir=None):
-    """Process all images in a directory."""
-    import glob
-    image_extensions = ["*.jpg", "*.jpeg", "*.png", "*.webp"]
-    files = []
-    for ext in image_extensions:
-        files.extend(glob.glob(os.path.join(directory, ext)))
-        files.extend(glob.glob(os.path.join(directory, ext.upper())))
-    
-    # Remove duplicates and sort
-    files = sorted(set(files))
-    
-    if not files:
-        print(f"No images found in {directory}")
-        return
-    
-    print(f"Found {len(files)} images in {directory}")
-    
-    for image_path in files:
-        # Skip already processed images
-        basename = os.path.basename(image_path)
-        if output_dir:
-            output_path = os.path.join(output_dir, f"painted-{basename}")
-        else:
-            output_path = None
-        
-        print(f"\nProcessing: {image_path}")
-        try:
-            main(image_path, reference_image, output_path)
-        except Exception as e:
-            print(f"Error processing {image_path}: {e}")
-
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Static nail painting with color matching")
-    parser.add_argument("original_image", nargs="?", default=None, help="Path to the original hand image")
-    parser.add_argument("reference_image", nargs="?", default=REFERENCE_IMAGE, help="Path to the reference nail polish image")
-    parser.add_argument("--output", "-o", default=None, help="Output path for the painted image")
-    parser.add_argument("--directory", "-d", default=None, help="Process all images in a directory")
-    args = parser.parse_args()
-    
-    if args.directory:
-        process_directory(args.directory, args.reference_image, args.output)
-    elif args.original_image:
-        main(args.original_image, args.reference_image, args.output)
-    else:
-        main(ORIGINAL_IMAGE, REFERENCE_IMAGE)
+    main(ORIGINAL_IMAGE, REFERENCE_IMAGE)
