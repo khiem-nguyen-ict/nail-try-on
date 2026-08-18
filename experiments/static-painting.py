@@ -7,10 +7,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from app.config import MAX_DETECTION_DIM
 from app.services.hand_detector import detect_hands
 from app.services.nail_detector import detect_nails, filter_nails_by_hands
-from PIL import Image, ImageDraw, ImageFilter, ImageChops, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageChops, ImageOps, ImageEnhance
 import math
 
 GAUSSIAN_BLUR=24
+DEPTH_BRIGHTNESS_MULTIPLIER=10
 
 ORIGINAL_IMAGE = "sample-images/hand.webp"
 REFERENCE_IMAGE = "sample-images/sample.png"
@@ -92,13 +93,19 @@ def compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh)
     return adjusted
 
 
-def draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h):
+def draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z=None):
     ref_w = max(w, h)
     _rx, _rh = ref_image.size
     ref_height = ref_w * _rh / _rx
     resized_img = ref_image.resize((int(ref_w), int(ref_height)), Image.Resampling.LANCZOS)
 
     rotated_img = resized_img.rotate(-float(angle + 90), expand=True)
+
+    if z is not None:
+        brightness_factor = 1.0 - float(z) * DEPTH_BRIGHTNESS_MULTIPLIER
+        brightness_factor = max(0.5, min(1.5, brightness_factor))
+        enhancer = ImageEnhance.Brightness(rotated_img)
+        rotated_img = enhancer.enhance(brightness_factor)
     rw, rh = rotated_img.size
 
     paste_x = int(cx - rw / 2)
@@ -211,8 +218,9 @@ def main():
         angle = nail.get("angle")
         w = nail.get("width", 0)
         h = nail.get("height", 0)
+        z = nail.get("z")
 
-        draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h)
+        draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z)
         draw_nail_debug(mask_draw, points, cx, cy, angle, w, h)
 
     save_and_show_results(mask_image, base_image)
