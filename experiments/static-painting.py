@@ -185,23 +185,6 @@ import cv2
 import numpy as np
 
 
-def get_exact_nail_dimensions(polygon_points):
-    """polygon_points: array of (x, y) coordinates from YOLO segmentation mask
-
-    e.g., results[0].masks.xy[0]
-    """
-    pts = np.array(polygon_points, dtype=np.float32)
-
-    # Fits an Oriented Bounding Box (OBB) to the mask
-    rect = cv2.minAreaRect(pts)
-    (center_x, center_y), (width, height), angle = rect
-
-    # Physical width/height along the object's actual axis
-    nail_length = max(width, height)
-    nail_width = min(width, height)
-
-    return nail_width, nail_length
-
 def get_nail_width(a: float, w: float, h: float) -> float:
     # Handle undefined angles
     if abs(a) > 180:
