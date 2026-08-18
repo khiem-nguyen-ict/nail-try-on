@@ -27,7 +27,7 @@ def _apply_color_transfer(
     return result
 
 
-def _paint_nails(
+def paint_nails(
     image_source: Union[str, bytes], 
     regions, 
     color=(255, 0, 0), 
@@ -92,6 +92,14 @@ def _paint_nails(
         mask_np = cv2.GaussianBlur(mask_np, (ksize, ksize), sigmaX=blur)
         if gloss_intensity > 0:
             gloss_mask_np = cv2.GaussianBlur(gloss_mask_np, (ksize, ksize), sigmaX=blur)
+
+    # VALIDATION: if mask is empty, return original image
+    if np.count_nonzero(mask_np) == 0:
+        if isinstance(image_source, bytes):
+            buf = BytesIO()
+            image.save(buf, format="JPEG", quality=80)
+            return buf.getvalue()
+        return image
 
     # 3. Apply color transfer to the nail regions
     image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)

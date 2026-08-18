@@ -31,7 +31,7 @@ def process_frame_with_hand_status(
             width, height = image.size
 
         # Layer 2: Hand detection
-        hands_data = detect_hands(image_bytes, max_dim=max_dim, preloaded_image=image)
+        hands_data = _detect_hands(image_bytes, max_dim=max_dim, preloaded_image=image)
 
         if not hands_data:
             return image_bytes, False, "no_hands"

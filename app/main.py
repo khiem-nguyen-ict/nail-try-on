@@ -27,7 +27,7 @@ from app.config import (
     MAX_PROCESS_FPS,
 )
 from app.utils.color import _hex_to_rgb
-from app.services.frame_processor import _process_frame_with_hand_status
+from app.services.frame_processor import process_frame_with_hand_status
 
 
 def create_app() -> FastAPI:
@@ -87,8 +87,8 @@ def create_app() -> FastAPI:
                         await websocket.send_bytes(data)
                         continue
 
-                    processed, hands_found = await asyncio.to_thread(
-                        _process_frame_with_hand_status, data, MAX_DETECTION_DIM, ROBOFLOW_MAX_DIM, current_color, current_opacity
+                    processed, hands_found, reason = await asyncio.to_thread(
+                        process_frame_with_hand_status, data, MAX_DETECTION_DIM, ROBOFLOW_MAX_DIM, current_color, current_opacity
                     )
                     last_process_time = now
 
@@ -112,8 +112,8 @@ def create_app() -> FastAPI:
     ):
         """Process an uploaded image and return the painted result."""
         image_bytes = await file.read()
-        processed, _ = await asyncio.to_thread(
-            _process_frame_with_hand_status,
+        processed, _, _ = await asyncio.to_thread(
+            process_frame_with_hand_status,
             image_bytes,
             MAX_DETECTION_DIM,
             ROBOFLOW_MAX_DIM,

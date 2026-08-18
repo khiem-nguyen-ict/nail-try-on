@@ -6,8 +6,6 @@ from io import BytesIO
 from typing import Union
 
 from app.config import (
-    MAX_DETECTION_DIM,
-    ROBOFLOW_MAX_DIM,
     FRAME_SKIPPED_BLUR_THRESHOLD,
 )
 
@@ -31,7 +29,7 @@ FINGERTIP_DIP_MAP = {
 }
 
 
-def _is_blur(image_bytes: bytes, threshold: float = FRAME_SKIPPED_BLUR_THRESHOLD) -> bool:
+def is_blur(image_bytes: bytes, threshold: float = FRAME_SKIPPED_BLUR_THRESHOLD) -> bool:
     """Return True if the image is too blurry, False otherwise.
 
     Uses the variance of the Laplacian method. A sharp image has high
