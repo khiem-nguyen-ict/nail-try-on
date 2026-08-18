@@ -7,11 +7,14 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from app.config import MAX_DETECTION_DIM
 from app.services.hand_detector import detect_hands
 from app.services.nail_detector import detect_nails, filter_nails_by_hands
-from PIL import Image, ImageDraw, ImageFilter, ImageChops, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageChops, ImageOps, ImageEnhance
 import math
 
-ORIGINAL_IMAGE = "sample-images/hand-2.jpg"
-REFERENCE_IMAGE = "sample-images/sample-2.png"
+GAUSSIAN_BLUR=24
+DEPTH_BRIGHTNESS_MULTIPLIER=10
+
+ORIGINAL_IMAGE = "sample-images/hand.webp"
+REFERENCE_IMAGE = "sample-images/sample.png"
 
 def load_or_compute(json_path, compute_fn):
     if os.path.exists(json_path):
@@ -90,7 +93,7 @@ def compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh)
     return adjusted
 
 
-def draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h):
+def draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z=None):
     ref_w = max(w, h)
     _rx, _rh = ref_image.size
     ref_height = ref_w * _rh / _rx
@@ -98,10 +101,11 @@ def draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h):
 
     rotated_img = resized_img.rotate(-float(angle + 90), expand=True)
 
-    r, g, b, a = rotated_img.split()
-    a = a.point(lambda p: int(p * 1))
-    a = a.filter(ImageFilter.GaussianBlur(radius=3))
-    rotated_img = Image.merge("RGBA", (r, g, b, a))
+    if z is not None:
+        brightness_factor = 1.0 - float(z) * DEPTH_BRIGHTNESS_MULTIPLIER
+        brightness_factor = max(0.5, min(1.5, brightness_factor))
+        enhancer = ImageEnhance.Brightness(rotated_img)
+        rotated_img = enhancer.enhance(brightness_factor)
     rw, rh = rotated_img.size
 
     paste_x = int(cx - rw / 2)
@@ -122,19 +126,9 @@ def draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h):
     polygon_draw = ImageDraw.Draw(polygon_mask)
     adjusted_points = compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh)
     polygon_draw.polygon(adjusted_points, fill=255)
-
+    polygon_mask = polygon_mask.filter(ImageFilter.GaussianBlur(radius=GAUSSIAN_BLUR))
     final_mask = ImageChops.multiply(polygon_mask, nail_alpha)
     base_image.paste(rotated_img, (shifted_x, shifted_y), final_mask)
-
-    polygon_mask = Image.new("L", rotated_img.size, 0)
-    polygon_draw = ImageDraw.Draw(polygon_mask)
-    adjusted_points = [(x - shifted_x, y - shifted_y) for x, y in points]
-
-    polygon_draw.polygon(adjusted_points, fill=255)
-    polygon_mask = polygon_mask.filter(ImageFilter.GaussianBlur(radius=8))
-    final_mask = ImageChops.multiply(polygon_mask, nail_alpha)
-    base_image.paste(rotated_img, (shifted_x, shifted_y), final_mask)
-
 
 def draw_nail_debug(mask_draw, points, cx, cy, angle, w, h):
     debug_color = (0, 255, 0)
@@ -224,8 +218,9 @@ def main():
         angle = nail.get("angle")
         w = nail.get("width", 0)
         h = nail.get("height", 0)
+        z = nail.get("z")
 
-        draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h)
+        draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z)
         draw_nail_debug(mask_draw, points, cx, cy, angle, w, h)
 
     save_and_show_results(mask_image, base_image)
