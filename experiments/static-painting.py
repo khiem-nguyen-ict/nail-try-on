@@ -12,14 +12,14 @@ from app.services.nail_detector import detect_nails, filter_nails_by_hands
 from PIL import Image, ImageDraw, ImageFilter, ImageChops, ImageOps, ImageEnhance, ImageStat, ImageFont
 import math
 
-GAUSSIAN_BLUR=12
+GAUSSIAN_BLUR=6
 
 # Color matching defaults
 COLOR_MATCH_HUE_SHIFT = 0.04       # max hue shift toward base image (0-1, fraction of hue circle)
 COLOR_MATCH_SATURATION = 0.15      # how much to blend saturation toward base image (0-1)
 COLOR_MATCH_BRIGHTNESS = 0.2       # how much to blend brightness toward base image (0-1)
 
-ORIGINAL_IMAGE = "sample-images/hand-2.jpg"
+ORIGINAL_IMAGE = "sample-images/hand-3.jpg"
 REFERENCE_IMAGE = "sample-images/sample-2.png"
 
 DEBUG_FONT_PATHS = [
@@ -356,6 +356,12 @@ def main(original_image, reference_image, output_path=None):
         h = nail.get("height", 0)
         z = nail.get("z")
 
+        '''
+        MediaPipe defines z as relative depth to the wrist (landmark 0):
+            z = 0 at the wrist
+            z < 0 → landmark is closer to the camera than the wrist
+            z > 0 → landmark is further from the camera than the wrist
+        '''
         draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z, base_color_profile)
         draw_nail_debug(mask_draw, points, cx, cy, angle, w, h)
 
