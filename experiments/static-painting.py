@@ -198,21 +198,21 @@ def get_nail_size(a: float, w: float, h: float):
     # Smoothly blend between H (near 0°, ±180°) and W (near ±90°)
     return (cos_sq * h) + (sin_sq * w), (sin_sq * h) + (cos_sq * w)
 
-def draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z, a3d, base_color_profile=None):
-    img_w, img_h = ref_image.size
+def draw_nail_polish(base_image, sample_image, points, cx, cy, angle, w, h, z, a3d, base_color_profile=None):
+    sample_img_w, sample_img_h = sample_image.size
     # Skew the nail shape based on the a3d angle.
-    # a3d close to 90: make the top of ref_image same width, bottom of ref_image narrow.
-    # a3d close to -90: make the bottom of ref_image same width, top of ref_image narrow.
+    # a3d close to 90: make the top of sample_image same width, bottom of sample_image narrow.
+    # a3d close to -90: make the bottom of sample_image same width, top of sample_image narrow.
     a3d_val = float(a3d)
     a3d_abs = abs(a3d_val)
 
-    img_np = np.array(ref_image)
+    img_np = np.array(sample_image)
 
     a3d_norm = max(-1.0, min(1.0, a3d_val / 90.0))
-    offset = img_w * abs(a3d_norm) * 0.25
+    offset = sample_img_w * abs(a3d_norm) * 0.25
 
-    max_x = img_w
-    max_y = img_h
+    max_x = sample_img_w
+    max_y = sample_img_h
     src = np.float32([
         [0, 0],
         [max_x, 0],
@@ -229,14 +229,14 @@ def draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z, a3d,
         dst[3, 0] = offset
 
     M = cv2.getPerspectiveTransform(src, dst)
-    img_np = cv2.warpPerspective(img_np, M, (img_w, img_h), flags=cv2.INTER_LINEAR)
-    ref_image = Image.fromarray(img_np)
+    img_np = cv2.warpPerspective(img_np, M, (sample_img_w, sample_img_h), flags=cv2.INTER_LINEAR)
+    sample_image = Image.fromarray(img_np)
 
     ref_w, ref_h = get_nail_size(angle, w, h)
     if a3d_norm > 0:
-      ref_w = ref_w * (1.0 + a3d_norm * 0.3)
-    ref_height = max((ref_w * img_h / img_w) * math.cos(math.radians(a3d_abs)), ref_h * 1.1)
-    resized_img = ref_image.resize((int(ref_w), int(ref_height)), Image.Resampling.LANCZOS)
+      ref_w = ref_w * (1.0 + a3d_norm * 0.25)
+    ref_height = max((ref_w * sample_img_h / sample_img_w) * math.cos(math.radians(a3d_abs)), ref_h * 1.1)
+    resized_img = sample_image.resize((int(ref_w), int(ref_height)), Image.Resampling.LANCZOS)
     rotated_img = resized_img.rotate(-float(angle + 90), expand=True)
 
     # Apply depth-based brightness
@@ -347,7 +347,7 @@ def save_and_show_results(mask_image, base_image, output_path=None):
     mask_path = output_path.replace(os.path.splitext(output_path)[1], "-mask" + os.path.splitext(output_path)[1])
     mask_image.save(mask_path)
     # mask_image.show()
-    base_image.show()
+    # base_image.show()
     print(f"Saved: {output_path}")
     print(f"Saved mask: {mask_path}")
 
@@ -410,4 +410,14 @@ def main(original_image, reference_image, output_path=None):
     return True
 
 if __name__ == "__main__":
-    main(ORIGINAL_IMAGE, REFERENCE_IMAGE)
+    sample_dir = "sample-images"
+    ref_image = "sample-images/sample-2.png"
+    for filename in sorted(os.listdir(sample_dir)):
+        if filename.startswith("hand"):
+            name, ext = os.path.splitext(filename)
+            if ext.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif"} or "-output" in filename:
+                continue
+            image_path = os.path.join(sample_dir, filename)
+            output_path = os.path.join(sample_dir, f"{name}-output{ext}")
+            print(f"Processing {image_path} -> {output_path}")
+            main(image_path, ref_image, output_path)
