@@ -56,6 +56,20 @@ hand using a feathered mask and multiply blending to retain natural shadows.
 
 ![Nail Pattern](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/nail_pattern.jpg?raw=true)
 
+## Static Painting Experiment
+
+The `experiments/static-painting.py` script demonstrates offline nail painting
+using a reference pattern image and the RoBoFlow segmentation mask. It supports
+depth-based lighting using the MediaPipe `z` coordinate:
+
+- **Depth-based brightness:** Fingertip `z` values (relative to the wrist) are
+  mapped to brightness adjustments so nails closer to the camera appear brighter
+  and those further away appear dimmer.
+- **Color matching:** Nail colors are subtly adjusted to harmonize with the base
+  image HSV profile.
+- **Outputs:** Generates a painted result and a debug mask under
+  `sample-images/`.
+
 ## Project Structure
 
 The backend is organized as a Python package under `app/` to separate

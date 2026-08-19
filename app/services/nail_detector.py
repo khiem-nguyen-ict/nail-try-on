@@ -120,9 +120,10 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
                 rounded_point = {
                     "x": round(float(p.get("x", 0)), 12),
                     "y": round(float(p.get("y", 0)), 12),
+                    "z": round(float(p.get("z", 0)), 12),
                 }
                 for k, v in p.items():
-                    if k not in ("x", "y"):
+                    if k not in ("x", "y", "z"):
                         rounded_point[k] = v
                 rounded_points.append(rounded_point)
             pred_copy["points"] = rounded_points
