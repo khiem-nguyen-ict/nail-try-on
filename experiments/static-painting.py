@@ -180,25 +180,7 @@ def compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh)
         else:
             new_x, new_y = x, y
         adjusted.append((new_x - shifted_x, new_y - shifted_y))
-    
-    return smooth_polygon(adjusted, iterations=3)
-
-def smooth_polygon(points, iterations=3):
-    if len(points) < 3:
-        return points
-    pts = list(points)
-    for _ in range(iterations):
-        new_pts = []
-        n = len(pts)
-        for i in range(n):
-            p0 = pts[i]
-            p1 = pts[(i + 1) % n]
-            q = (0.75 * p0[0] + 0.25 * p1[0], 0.75 * p0[1] + 0.25 * p1[1])
-            r = (0.25 * p0[0] + 0.75 * p1[0], 0.25 * p0[1] + 0.75 * p1[1])
-            new_pts.append(q)
-            new_pts.append(r)
-        pts = new_pts
-    return pts
+    return adjusted
 
 def get_nail_size(a: float, w: float, h: float):
     # Handle undefined angles
