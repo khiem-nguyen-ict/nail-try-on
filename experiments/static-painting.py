@@ -410,4 +410,14 @@ def main(original_image, reference_image, output_path=None):
     return True
 
 if __name__ == "__main__":
-    main(ORIGINAL_IMAGE, REFERENCE_IMAGE)
+    sample_dir = "sample-images"
+    ref_image = "sample-images/sample-2.png"
+    for filename in sorted(os.listdir(sample_dir)):
+        if filename.startswith("hand"):
+            name, ext = os.path.splitext(filename)
+            if ext.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif"}:
+                continue
+            image_path = os.path.join(sample_dir, filename)
+            output_path = os.path.join(sample_dir, f"{name}-output{ext}")
+            print(f"Processing {image_path} -> {output_path}")
+            main(image_path, ref_image, output_path)
