@@ -29,7 +29,7 @@ Nail regions are segmented using a [RoBoFlow](https://roboflow.com/) serverless 
 
 - **Model:** `thanh-khiem-nguyen/nails_segmentation-m8ew1-1-rfdetr-seg-large-t1`
 - **Output:** Polygon masks for detected nail regions with confidence scores
-- **Filtering:** Only predictions that contain at least one fingertip (from MediaPipe) are kept, using a configurable proximity threshold (`SPACE_DETECTION_THRESHOLD`)
+- **Filtering:** Every detected nail is kept and matched to its nearest fingertip via a one-to-one assignment (no hand-tuned proximity threshold). Nails that cannot be paired with a finger fall back to an orientation derived from their own polygon shape, so none are dropped.
 - **Optimization:** Images sent to the API are downscaled to `ROBOFLOW_MAX_DIM` to reduce latency and response size
 
 ## Best Output Samples
@@ -156,7 +156,6 @@ FastAPI app at `/`.
 | `NAIL_ALPHA` | `0.8` | Blend strength for color transfer |
 | `NAIL_BLUR` | `2` | Gaussian blur radius applied to the nail mask |
 | `NAIL_GLOSS_INTENSITY` | `0.5` | Gloss intensity for the painted nails (`0.0`: off, `1.0`: maximum gloss) |
-| `SPACE_DETECTION_THRESHOLD` | `0.1` | Fingertip-to-nail distance threshold |
 | `YOLO_CONFIDENCE_THRESHOLD` | `0.5` | Minimum confidence for nail predictions |
 | `MAX_DETECTION_DIM` | `320` | Max pixel dimension for MediaPipe hand detection. Lower = faster. Set to `0` to disable. |
 | `MAX_PROCESS_FPS` | `20` | Max frames per second the server will process per WebSocket connection. |
@@ -181,9 +180,10 @@ Each frame from the browser WebSocket goes through this pipeline:
    If no hands are found, the original frame is returned.
 5. **Nail segmentation** — The full frame is sent to the RoBoFlow RF-DETR
    segmentation model, which returns nail region polygons.
-6. **Filter by proximity** — Only nail predictions that contain at least one
-   fingertip are kept, using a configurable distance threshold
-   (`SPACE_DETECTION_THRESHOLD`).
+6. **Match nails to fingers** — Each detected nail is matched to its nearest
+   fingertip via a one-to-one assignment, so every fingertip is paired with at
+   most one nail (no finger is shared between nails). Nails that cannot be
+   paired fall back to an orientation estimated from their own polygon shape.
  7. **Paint nails** — The selected nail regions are recolored using OpenCV color
     transfer (HSV hue replacement) with configurable opacity (`NAIL_ALPHA`)
     and blur (`NAIL_BLUR`). A distance-transform-based glossy effect is applied
@@ -244,7 +244,6 @@ docker run -p 8000:8000 \
   -e NAIL_ALPHA=0.8 \
   -e NAIL_BLUR=2 \
   -e NAIL_GLOSS_INTENSITY=0.5 \
-  -e SPACE_DETECTION_THRESHOLD=0.1 \
   -e YOLO_CONFIDENCE_THRESHOLD=0.5 \
   -e MAX_DETECTION_DIM=320 \
   -e MAX_PROCESS_FPS=20 \
