@@ -347,7 +347,7 @@ def save_and_show_results(mask_image, base_image, output_path=None):
     mask_path = output_path.replace(os.path.splitext(output_path)[1], "-mask" + os.path.splitext(output_path)[1])
     mask_image.save(mask_path)
     # mask_image.show()
-    base_image.show()
+    # base_image.show()
     print(f"Saved: {output_path}")
     print(f"Saved mask: {mask_path}")
 
@@ -415,7 +415,7 @@ if __name__ == "__main__":
     for filename in sorted(os.listdir(sample_dir)):
         if filename.startswith("hand"):
             name, ext = os.path.splitext(filename)
-            if ext.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif"}:
+            if ext.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif"} or "-output" in filename:
                 continue
             image_path = os.path.join(sample_dir, filename)
             output_path = os.path.join(sample_dir, f"{name}-output{ext}")
