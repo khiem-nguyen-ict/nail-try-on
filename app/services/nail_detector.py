@@ -9,7 +9,6 @@ from PIL import Image, ImageOps
 from app.config import (
     PARAMS,
     URL,
-    SPACE_DETECTION_THRESHOLD,
 )
 
 
@@ -69,14 +68,17 @@ def detect_nails(image_source: Union[str, bytes], max_dim: int = 0):
 
 
 def _point_in_polygon(x, y, polygon, width, height):
-    """Check if point (x, y) is close to the center of polygon."""
+    """Check if point (x, y) is inside the given polygon using ray casting."""
     if not polygon:
         return False
-    cx = sum(p[0] for p in polygon) / len(polygon)
-    cy = sum(p[1] for p in polygon) / len(polygon)
-    distance = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
-    threshold = SPACE_DETECTION_THRESHOLD * (width + height) / 2
-    return distance < threshold
+    inside = False
+    n = len(polygon)
+    for i in range(n):
+        x0, y0 = polygon[i]
+        x1, y1 = polygon[(i + 1) % n]
+        if ((y0 > y) != (y1 > y)) and (x < (x1 - x0) * (y - y0) / (y1 - y0) + x0):
+            inside = not inside
+    return inside
 
 
 def filter_nails_by_hands(nails_result, hands_data, width, height):
