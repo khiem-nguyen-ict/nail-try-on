@@ -2,7 +2,8 @@ import json
 import sys
 import os
 import colorsys
-import argparse
+import cv2
+import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -19,7 +20,7 @@ COLOR_MATCH_HUE_SHIFT = 0.04       # max hue shift toward base image (0-1, fract
 COLOR_MATCH_SATURATION = 0.15      # how much to blend saturation toward base image (0-1)
 COLOR_MATCH_BRIGHTNESS = 0.2       # how much to blend brightness toward base image (0-1)
 
-ORIGINAL_IMAGE = "sample-images/hand-3.jpg"
+ORIGINAL_IMAGE = "sample-images/hand-6.jpg"
 REFERENCE_IMAGE = "sample-images/sample-2.png"
 
 DEBUG_FONT_PATHS = [
@@ -181,15 +182,11 @@ def compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh)
         adjusted.append((new_x - shifted_x, new_y - shifted_y))
     return adjusted
 
-import cv2
-import numpy as np
-
-
-def get_nail_width(a: float, w: float, h: float) -> float:
+def get_nail_size(a: float, w: float, h: float):
     # Handle undefined angles
     if abs(a) > 180:
         print(f"Angle {a} falls into undefined cases!")
-        return 0.0
+        return 0.0, 0.0
 
     # Convert angle from degrees to radians
     rad = math.radians(a)
@@ -199,25 +196,57 @@ def get_nail_width(a: float, w: float, h: float) -> float:
     sin_sq = math.sin(rad) ** 2
 
     # Smoothly blend between H (near 0°, ±180°) and W (near ±90°)
-    return (cos_sq * h) + (sin_sq * w)
+    return (cos_sq * h) + (sin_sq * w), (sin_sq * h) + (cos_sq * w)
 
-def draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z=None, base_color_profile=None):
-    ref_w = get_nail_width(angle, w, h)
-    _rx, _rh = ref_image.size
-    ref_height = ref_w * _rh / _rx
+def draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z, a3d, base_color_profile=None):
+    img_w, img_h = ref_image.size
+    # Skew the nail shape based on the a3d angle.
+    # a3d close to 90: make the top of ref_image same width, bottom of ref_image narrow.
+    # a3d close to -90: make the bottom of ref_image same width, top of ref_image narrow.
+    a3d_val = float(a3d)
+    a3d_abs = abs(a3d_val)
+
+    img_np = np.array(ref_image)
+
+    a3d_norm = max(-1.0, min(1.0, a3d_val / 90.0))
+    offset = img_w * abs(a3d_norm) * 0.25
+
+    max_x = img_w
+    max_y = img_h
+    src = np.float32([
+        [0, 0],
+        [max_x, 0],
+        [max_x, max_y],
+        [0, max_y]
+    ])
+
+    dst = src.copy()
+    if a3d_norm < 0:
+        dst[0, 0] = offset
+        dst[1, 0] = max_x - offset
+    else:
+        dst[2, 0] = max_x - offset
+        dst[3, 0] = offset
+
+    M = cv2.getPerspectiveTransform(src, dst)
+    img_np = cv2.warpPerspective(img_np, M, (img_w, img_h), flags=cv2.INTER_LINEAR)
+    ref_image = Image.fromarray(img_np)
+
+    ref_w, ref_h = get_nail_size(angle, w, h)
+    if a3d_norm > 0:
+      ref_w = ref_w * (1.0 + a3d_norm * 0.3)
+    ref_height = max((ref_w * img_h / img_w) * math.cos(math.radians(a3d_abs)), ref_h * 1.1)
     resized_img = ref_image.resize((int(ref_w), int(ref_height)), Image.Resampling.LANCZOS)
-
     rotated_img = resized_img.rotate(-float(angle + 90), expand=True)
 
     # Apply depth-based brightness
-    if z is not None:
-        z = float(z)
-        Z_MIN, Z_MAX = -0.08, 0.08
-        depth_ratio = (z - Z_MIN) / (Z_MAX - Z_MIN)
-        depth_ratio = max(0.0, min(1.0, depth_ratio))
-        brightness_factor = 1.0 / (1.0 + depth_ratio * 1.5)
-        enhancer = ImageEnhance.Brightness(rotated_img)
-        rotated_img = enhancer.enhance(brightness_factor)
+    z = float(z)
+    Z_MIN, Z_MAX = -0.08, 0.08
+    depth_ratio = (z - Z_MIN) / (Z_MAX - Z_MIN)
+    depth_ratio = max(0.0, min(1.0, depth_ratio))
+    brightness_factor = 1.0 / (1.0 + depth_ratio * 0.03)
+    enhancer = ImageEnhance.Brightness(rotated_img)
+    rotated_img = enhancer.enhance(brightness_factor)
 
     # Apply base image color matching
     if base_color_profile is not None:
@@ -239,15 +268,22 @@ def draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z=None,
 
     nail_alpha = rotated_img.split()[-1]
 
-    polygon_mask = Image.new("L", rotated_img.size, 0)
-    polygon_draw = ImageDraw.Draw(polygon_mask)
+    # Generate smooth polygon mask via supersampling to avoid jagged edges.
+    supersample = 4
+    mask_w, mask_h = rotated_img.size
+    big_w, big_h = mask_w * supersample, mask_h * supersample
+    big_mask = Image.new("L", (big_w, big_h), 0)
+    big_draw = ImageDraw.Draw(big_mask)
     adjusted_points = compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh)
-    polygon_draw.polygon(adjusted_points, fill=255)
-    polygon_mask = polygon_mask.filter(ImageFilter.GaussianBlur(radius=GAUSSIAN_BLUR))
+    scaled_points = [(x * supersample, y * supersample) for x, y in adjusted_points]
+    big_draw.polygon(scaled_points, fill=255)
+    big_mask = big_mask.filter(ImageFilter.GaussianBlur(radius=GAUSSIAN_BLUR * supersample))
+    polygon_mask = big_mask.resize((mask_w, mask_h), Image.Resampling.LANCZOS)
+
     final_mask = ImageChops.multiply(polygon_mask, nail_alpha)
     base_image.paste(rotated_img, (shifted_x, shifted_y), final_mask)
 
-def draw_nail_debug(mask_draw, points, cx, cy, angle, w, h):
+def draw_nail_debug(mask_draw, points, cx, cy, angle, w, h, z, a3d):
     debug_color = (0, 255, 0)
     mask_draw.polygon(points, fill=(255, 255, 255))
 
@@ -293,21 +329,25 @@ def draw_nail_debug(mask_draw, points, cx, cy, angle, w, h):
     line_y2 = mid_y + py * w
     mask_draw.line([(line_x1, line_y1), (line_x2, line_y2)], fill=debug_color, width=4)
 
-    mask_draw.text((cx + 20, cy + 20), f"{int(w)}x{int(h)}", fill=(255, 0, 0), font=get_debug_font(length))
-    mask_draw.text((cx + 20, cy - 250), f"{int(angle)}°", fill=(0, 255, 255), font=get_debug_font(length))
-
-    nw = get_nail_width(angle, w, h)
-    mask_draw.text((cx + 20, cy + 150), f"Nail Width = {int(nw)}", fill=(0, 255, 255), font=get_debug_font(length))
-
+    nw, nh = get_nail_size(angle, w, h)
+    lh = length * 0.2
+    tt = cy + length
+    f = get_debug_font(length)
+    mask_draw.text((cx, tt + lh), f"w: {int(nw)}", fill=debug_color, font=f)
+    mask_draw.text((cx, tt + 2 * lh), f"r: {int(w)}x{int(h)}", fill=debug_color, font=f)
+    mask_draw.text((cx, tt + 3 * lh), f"a: {int(angle)}°", fill=debug_color, font=f)
+    mask_draw.text((cx, tt + 4 * lh), f"z: {z:2f}", fill=debug_color, font=f)
+    mask_draw.text((cx, tt + 5 * lh), f"a3d: {int(a3d)}°", fill=debug_color, font=f)
+    
 
 def save_and_show_results(mask_image, base_image, output_path=None):
     if output_path is None:
         output_path = "sample-images/static-nail-painting.jpg"
     base_image.save(output_path)
-    base_image.show()
     mask_path = output_path.replace(os.path.splitext(output_path)[1], "-mask" + os.path.splitext(output_path)[1])
     mask_image.save(mask_path)
-    mask_image.show()
+    # mask_image.show()
+    base_image.show()
     print(f"Saved: {output_path}")
     print(f"Saved mask: {mask_path}")
 
@@ -349,12 +389,13 @@ def main(original_image, reference_image, output_path=None):
 
     for nail in filtered_nails:
         points = [(float(p["x"]), float(p["y"])) for p in nail.get("points", [])]
-        cx = nail.get("x")
-        cy = nail.get("y")
-        angle = nail.get("angle")
+        cx = nail.get("x", 0)
+        cy = nail.get("y", 0)
+        angle = nail.get("angle", 0)
+        a3d = nail.get("a3d", 0)
         w = nail.get("width", 0)
         h = nail.get("height", 0)
-        z = nail.get("z")
+        z = nail.get("z", 0)
 
         '''
         MediaPipe defines z as relative depth to the wrist (landmark 0):
@@ -362,8 +403,8 @@ def main(original_image, reference_image, output_path=None):
             z < 0 → landmark is closer to the camera than the wrist
             z > 0 → landmark is further from the camera than the wrist
         '''
-        draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z, base_color_profile)
-        draw_nail_debug(mask_draw, points, cx, cy, angle, w, h)
+        draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z, a3d, base_color_profile)
+        draw_nail_debug(mask_draw, points, cx, cy, angle, w, h, z, a3d)
 
     save_and_show_results(mask_image, base_image, output_path)
     return True

@@ -92,6 +92,8 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
                 "y": tip["y"] * height,
                 "a": tip["a"],
                 "z": tip.get("z"),
+                "a3d": tip.get("a3d"),
+                "landmark_id": tip.get("landmark_id"),
             })
 
     filtered = []
@@ -103,10 +105,14 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
 
         matched_angle = None
         matched_z = None
+        matched_a3d = None
+        matched_landmark_id = None
         for ft in fingertips_px:
             if _point_in_polygon(ft["x"], ft["y"], polygon, width, height):
                 matched_angle = ft["a"]
                 matched_z = ft.get("z")
+                matched_a3d = ft.get("a3d")
+                matched_landmark_id = ft.get("landmark_id")
                 break
 
         if matched_angle is not None:
@@ -114,6 +120,10 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
             pred_copy["angle"] = matched_angle
             if matched_z is not None:
                 pred_copy["z"] = matched_z
+            if matched_a3d is not None:
+                pred_copy["a3d"] = matched_a3d
+            if matched_landmark_id is not None:
+                pred_copy["landmark_id"] = matched_landmark_id
 
             rounded_points = []
             for p in pred_copy.get("points", []):

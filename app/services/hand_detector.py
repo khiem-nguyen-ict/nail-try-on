@@ -1,4 +1,5 @@
 import cv2
+import math
 import numpy as np
 import mediapipe as mp
 from PIL import Image, ImageOps
@@ -113,14 +114,20 @@ def detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_im
                 # Angle of the fingertip segment (DIP -> TIP) in degrees
                 dx = lm.x - dip_lm.x
                 dy = lm.y - dip_lm.y
+                dz = lm.z - dip_lm.z
                 angle_deg = round(np.degrees(np.arctan2(dy, dx)), 2)
+
+                # 3-D angle between the finger (MCP -> TIP) and the camera view direction.
+                # 90° = finger points toward the camera; 0° = finger lies flat on the image plane.
+                plane_angle = round(np.degrees(np.arctan2(-dz, math.sqrt(dx**2 + dy**2))), 2)
 
                 hand_entry["fingertips"].append({
                     "landmark_id": lm_id,
                     "x": round(lm.x, 6),
                     "y": round(lm.y, 6),
                     "z": round(lm.z, 6),
-                    "a": angle_deg
+                    "a": angle_deg,
+                    "a3d": plane_angle,
                 })
 
             output.append(hand_entry)
