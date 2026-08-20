@@ -9,6 +9,7 @@ warnings.filterwarnings(
 
 import asyncio
 import json
+import os
 import time
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Query
@@ -27,11 +28,13 @@ from app.config import (
 )
 from app.utils.color import hex_to_rgb
 from app.services.frame_processor import process_frame_with_hand_status
+from app.services.pattern_static_painter import paint_with_pattern
 
 
 def create_app() -> FastAPI:
     app = FastAPI()
     app.mount("/static", StaticFiles(directory="static"), name="static")
+    app.mount("/patterns", StaticFiles(directory="sample-images"), name="patterns")
 
     @app.get("/")
     async def get_index():
@@ -118,6 +121,26 @@ def create_app() -> FastAPI:
             hex_to_rgb(color),
             float(opacity),
             NAIL_BLUR
+        )
+        return Response(content=processed, media_type="image/jpeg")
+
+    @app.post("/paint_pattern")
+    async def paint_pattern_endpoint(
+        file: UploadFile = File(...),
+        pattern: str = Query(...),
+    ):
+        """Overlay the selected nail pattern onto the uploaded hand image."""
+        image_bytes = await file.read()
+        safe_name = os.path.basename(pattern)
+        pattern_path = os.path.join("sample-images", safe_name)
+
+        if not os.path.isfile(pattern_path):
+            return Response(content=image_bytes, media_type="image/jpeg", status_code=400)
+
+        processed = await asyncio.to_thread(
+            paint_with_pattern,
+            image_bytes,
+            pattern_path,
         )
         return Response(content=processed, media_type="image/jpeg")
 
