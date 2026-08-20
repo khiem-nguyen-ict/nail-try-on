@@ -7,7 +7,7 @@ A real-time nail polish try-on web app built with FastAPI, MediaPipe, and RoBoFl
 - **Real-time processing** via WebSocket (`/ws/{session_id}`)
 - **Hand detection** using MediaPipe Hands
 - **Nail segmentation** using a RoBoFlow RF-DETR segmentation model
-- **Color transfer** to recolor detected nail regions while preserving texture
+- **Color transfer** to recolor detected nail regions with configurable opacity and a distance-transform glossy effect
 - **Performance optimizations** for shared hosting: frame rate limiting, downscaled detection, and no-hand cooldown
 - **Configurable behavior** through environment variables
 
@@ -34,8 +34,8 @@ Nail regions are segmented using a [RoBoFlow](https://roboflow.com/) serverless 
 
 ## Best Output Samples
 
-The `nails_beauty.ipynb` notebook demonstrates offline generation methods
-using the same hand image and segmentation mask:
+The `experiments/static_painting.py` script demonstrates offline nail painting
+using a reference pattern image and the RoBoFlow segmentation mask:
 
 ### Input Image
 ![Input Image](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand.webp?raw=true)
@@ -43,17 +43,11 @@ using the same hand image and segmentation mask:
 ### Nail Segmentation Mask
 ![Nail Mask](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/nail_mask.webp?raw=true)
 
-### Method 1: SDXL Inpainting (Solid Color)
-Uses Stable Diffusion XL inpainting with text prompts to generate realistic
-painted nails while preserving hand lighting and texture.
+### Static Painting Result
+Overlays the reference pattern (`sample-2.png`) onto the segmented nail regions
+with depth-based brightness and color matching to harmonize with the base image.
 
 ![Sample 1](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-output.webp?raw=true)
-
-### Method 2: Pattern Overlay (Nail Art)
-Tiles a pattern image across the nail regions and blends it with the original
-hand using a feathered mask and multiply blending to retain natural shadows.
-
-![Nail Pattern](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/nail_pattern.jpg?raw=true)
 
 ## Static Painting Experiment
 
@@ -159,9 +153,8 @@ FastAPI app at `/`.
 | Variable | Default | Description |
 |---|---|---|
 | `ROBOFLOW_API_KEY` | — | **Required.** RoBoFlow API key |
-| `NAIL_ALPHA` | `0.8` | Blend strength for color transfer |
-| `NAIL_BLUR` | `2` | Gaussian blur radius applied to the nail mask |
-| `NAIL_GLOSS_INTENSITY` | `0.5` | Gloss intensity for the painted nails (`0.0`: off, `1.0`: maximum gloss) |
+| `NAIL_ALPHA` | `0.4` | Blend strength for color transfer |
+| `NAIL_BLUR` | `1` | Gaussian blur radius applied to the nail mask |
 | `YOLO_CONFIDENCE_THRESHOLD` | `0.5` | Minimum confidence for nail predictions |
 | `MAX_PROCESS_FPS` | `20` | Max frames per second the server will process per WebSocket connection. |
 | `NO_HAND_COOLDOWN` | `1.0` | Seconds to skip processing after no hands are detected. |
@@ -190,10 +183,10 @@ Each frame from the browser WebSocket goes through this pipeline:
    fingertip via a one-to-one assignment, so every fingertip is paired with at
    most one nail (no finger is shared between nails). Nails that cannot be
    paired fall back to an orientation estimated from their own polygon shape.
- 7. **Paint nails** — The selected nail regions are recolored using OpenCV color
-    transfer (HSV hue replacement) with configurable opacity (`NAIL_ALPHA`)
-    and blur (`NAIL_BLUR`). A distance-transform-based glossy effect is applied
-    using `NAIL_GLOSS_INTENSITY` to simulate light reflection on the nail surface.
+  7. **Paint nails** — The selected nail regions are recolored using full HSV
+     color transfer with the selected color, blended at `NAIL_ALPHA` and blurred
+     with `NAIL_BLUR`. A distance-transform-based glossy effect is applied
+     to simulate light reflection on the nail surface.
  8. **Stream back** — The processed JPEG is sent back to the browser over the
     same WebSocket.
 
@@ -246,9 +239,8 @@ The Docker build installs dependencies from pre-built binary wheels only
 docker build -t nail-try-on .
 docker run -p 8000:8000 \
   -e ROBOFLOW_API_KEY=<your-key> \
-  -e NAIL_ALPHA=0.8 \
-  -e NAIL_BLUR=2 \
-  -e NAIL_GLOSS_INTENSITY=0.5 \
+  -e NAIL_ALPHA=0.4 \
+  -e NAIL_BLUR=1 \
   -e YOLO_CONFIDENCE_THRESHOLD=0.5 \
   -e MAX_PROCESS_FPS=20 \
   -e NO_HAND_COOLDOWN=1.0 \
