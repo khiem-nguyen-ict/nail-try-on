@@ -28,7 +28,7 @@ Nail regions are segmented using a [RoBoFlow](https://roboflow.com/) serverless 
 
 - **Model:** `thanh-khiem-nguyen/nails_segmentation-m8ew1-1-rfdetr-seg-large-t1`
 - **Output:** Polygon masks for detected nail regions with confidence scores
-- **Filtering:** Every detected nail is kept and matched to its nearest fingertip via a one-to-one assignment (no hand-tuned proximity threshold). Nails that cannot be paired with a finger fall back to an orientation derived from their own polygon shape, so none are dropped.
+- **Filtering:** Every detected nail is matched to its nearest fingertip via a one-to-one assignment (no hand-tuned proximity threshold). Nails without a nearby fingertip are dropped (not painted with a fallback orientation), and each matched fingertip is marked (`matched: True`) in `hands_data` so downstream consumers can inspect which tips were consumed.
 - **Optimization:** Images sent to the API are downscaled to `ROBOFLOW_MAX_DIM` to reduce latency and response size
 - **Debug output:** Passing `debug_save_path` to `detect_hands()` generates a visualization with fingertip (red), DIP (green), dashed connecting lines, and finger ID labels for manual verification.
 
@@ -53,8 +53,8 @@ depth (`z`) for each fingertip.
 ### 3. Nail Segmentation Mask
 RoBoFlow RF-DETR segments nail regions as polygons. Each polygon is matched to
 its nearest fingertip using a one-to-one assignment so every fingertip is
-paired with at most one nail. Nails that cannot be paired fall back to an
-orientation derived from their own polygon shape.
+paired with at most one nail. Nails that cannot be paired with a nearby
+fingertip are dropped rather than painted with a fallback orientation.
 
 ![Nail Mask](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-output-mask.webp?raw=true)
 
@@ -67,11 +67,17 @@ render in correct back-to-front order.
 
 ![Final Result](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-output.webp?raw=true)
 
-## Static Painting Experiment
+## Experiments
+
+The `experiments/` directory contains standalone scripts (not used by the live
+server) that explore the nail-painting pipeline end-to-end:
+
+### `static_painting.py`
 
 The `experiments/static_painting.py` script demonstrates offline nail painting
-using a reference pattern image and the RoBoFlow segmentation mask. It supports
-depth-based lighting using the MediaPipe `z` coordinate:
+using a reference pattern image and the RoBoFlow segmentation mask. It delegates
+the per-nail painting to `app.services.nail_pattern_painter.paint_nail_pattern`
+and supports depth-based lighting using the MediaPipe `z` coordinate:
 
 - **Depth-based brightness:** Fingertip `z` values (relative to the wrist) are
   mapped to brightness adjustments so nails closer to the camera appear brighter
@@ -88,6 +94,19 @@ depth-based lighting using the MediaPipe `z` coordinate:
 - **Outputs:** Generates a painted result, a debug mask, and a MediaPipe debug
   image under `sample-images/`.
 
+### `model_painting.py`
+
+`experiments/model_painting.py` experiments with a generative approach using
+Stable Diffusion XL + ControlNet + inpainting, blended with the pattern from
+`sample-images/sample.png` onto the segmented nail mask (handedness and
+fingertip angles are used to orient each pattern). This is research-only and
+requires `diffusers` + `torch` plus a `ROBOFLOW_API_KEY`.
+
+### `nails_beauty.ipynb`
+
+`experiments/nails_beauty.ipynb` is an exploratory Jupyter notebook covering
+alternative nail-beauty workflows (color transfer, gloss, and pattern overlay).
+
 ## Project Structure
 
 The backend is organized as a Python package under `app/` to separate
@@ -96,24 +115,37 @@ configuration, services, utilities, and API wiring:
 ```
 app/
   __init__.py
-  config.py          # Environment variables, constants, and RoBoFlow config
-  main.py            # FastAPI app factory, routes, and ASGI entrypoint
+  api/
+    __init__.py          # API package (reserved for route modules)
+  config.py              # Environment variables, constants, and RoBoFlow config
+  main.py                # FastAPI app factory, routes, and ASGI entrypoint
   services/
     __init__.py
-    frame_processor.py  # Frame pipeline orchestration
-    hand_detector.py    # MediaPipe hand detection and blur check
-    nail_detector.py    # RoBoFlow API client and nail filtering
-    nail_painter.py     # Color transfer and glossy nail painting
+    frame_processor.py    # Frame pipeline orchestration
+    hand_detector.py      # MediaPipe hand detection and blur check
+    nail_detector.py      # RoBoFlow API client and nail filtering
+    nail_painter.py       # HSV color-transfer + distance-transform glossy paint
+    nail_pattern_painter.py  # Reference-pattern painting (perspective/skew/depth)
   utils/
     __init__.py
-    color.py            # Hex-to-RGB color helper
+    color.py             # Hex-to-RGB color helper
+    image.py             # Color matching and base image profile helpers
+    polygon.py           # Nail geometry helpers (rotated rectangle, sizing)
 ```
 
 - **`app/config.py`** loads environment variables via `python-dotenv` and
   exposes typed constants used across the app.
+- **`app/api/`** is a package reserved for route modules.
 - **`app/services/`** contains the processing pipeline:
   hand detection, nail segmentation, nail painting, and frame orchestration.
-- **`app/utils/`** holds small pure helpers shared by the services.
+  `nail_painter.py` recolors nails via HSV transfer + a glossy mask, while
+  `nail_pattern_painter.py` stamps a reference pattern (e.g. a nail-art
+  swatch) onto nails using perspective skew, depth-based brightness, and color
+  matching. `frame_processor.py` orchestrates these steps per frame.
+- **`app/utils/`** holds small pure helpers shared by the services:
+  `color.py` (color conversion), `image.py` (color-matching against the
+  base image's HSV profile), and `polygon.py` (nail-geometry helpers such as
+  rotated bounding-rectangle computation and nail sizing).
 - **`app/main.py`** defines the FastAPI app, mounts static files, and
   registers the HTTP and WebSocket routes. The ASGI app object is exported
   as `app.main:app`.
@@ -197,10 +229,11 @@ Each frame from the browser WebSocket goes through this pipeline:
    If no hands are found, the original frame is returned.
 5. **Nail segmentation** — The full frame is sent to the RoBoFlow RF-DETR
    segmentation model, which returns nail region polygons.
-6. **Match nails to fingers** — Each detected nail is matched to its nearest
-   fingertip via a one-to-one assignment, so every fingertip is paired with at
-   most one nail (no finger is shared between nails). Nails that cannot be
-   paired fall back to an orientation estimated from their own polygon shape.
+ 6. **Match nails to fingers** — Each detected nail is matched to its nearest
+    fingertip via a one-to-one assignment, so every fingertip is paired with
+    at most one nail (no finger is shared between nails). Nails that cannot be
+    paired with a nearby fingertip are dropped. Each matched fingertip is marked
+    in `hands_data` (`matched: True`).
   7. **Paint nails** — The selected nail regions are recolored using full HSV
      color transfer with the selected color, blended at `NAIL_ALPHA` and blurred
      with `NAIL_BLUR`. A distance-transform-based glossy effect is applied

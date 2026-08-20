@@ -1,20 +1,17 @@
 import json
 import sys
 import os
-import cv2
-import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.utils.image import apply_color_matching, get_base_image_color_profile
-from app.utils.polygon import get_nail_size, compute_adjusted_points
+from app.utils.image import get_base_image_color_profile
+from app.utils.polygon import get_nail_size
 
 from app.services.hand_detector import detect_hands
 from app.services.nail_detector import detect_nails, filter_nails_by_hands
-from PIL import Image, ImageDraw, ImageFilter, ImageChops, ImageOps, ImageEnhance, ImageStat, ImageFont
+from app.services.nail_pattern_painter import paint_nail_pattern
+from PIL import Image, ImageDraw, ImageOps, ImageFont
 import math
-
-GAUSSIAN_BLUR=6
 
 ORIGINAL_IMAGE = "sample-images/hand-6.jpg"
 REFERENCE_IMAGE = "sample-images/sample-2.png"
@@ -44,94 +41,6 @@ def load_or_compute(json_path, compute_fn):
         with open(json_path, "w") as f:
             json.dump(data, f, indent=2)
     return data
-
-def draw_nail_polish(base_image, sample_image, points, cx, cy, angle, w, h, z, a3d, base_color_profile=None):
-    sample_img_w, sample_img_h = sample_image.size
-    # Skew the nail shape based on the a3d angle.
-    # a3d close to 90: make the top of sample_image same width, bottom of sample_image narrow.
-    # a3d close to -90: make the bottom of sample_image same width, top of sample_image narrow.
-    a3d_val = float(a3d)
-    a3d_abs = abs(a3d_val)
-
-    img_np = np.array(sample_image)
-
-    a3d_norm = max(-1.0, min(1.0, a3d_val / 90.0))
-    offset = sample_img_w * abs(a3d_norm) * 0.25
-
-    max_x = sample_img_w
-    max_y = sample_img_h
-    src = np.float32([
-        [0, 0],
-        [max_x, 0],
-        [max_x, max_y],
-        [0, max_y]
-    ])
-
-    dst = src.copy()
-    if a3d_norm < 0:
-        dst[0, 0] = offset
-        dst[1, 0] = max_x - offset
-    else:
-        dst[2, 0] = max_x - offset
-        dst[3, 0] = offset
-
-    M = cv2.getPerspectiveTransform(src, dst)
-    img_np = cv2.warpPerspective(img_np, M, (sample_img_w, sample_img_h), flags=cv2.INTER_LINEAR)
-    sample_image = Image.fromarray(img_np)
-
-    ref_w, ref_h = get_nail_size(angle, w, h)
-    if a3d_norm > 0:
-      ref_w = ref_w * (1.0 + a3d_norm * 0.25)
-    ref_height = max((ref_w * sample_img_h / sample_img_w) * math.cos(math.radians(a3d_abs)), ref_h * 1.1)
-    resized_img = sample_image.resize((int(ref_w), int(ref_height)), Image.Resampling.LANCZOS)
-    rotated_img = resized_img.rotate(-float(angle + 90), expand=True)
-
-    # Apply depth-based brightness
-    z = float(z)
-    Z_MIN, Z_MAX = -0.08, 0.08
-    depth_ratio = (z - Z_MIN) / (Z_MAX - Z_MIN)
-    depth_ratio = max(0.0, min(1.0, depth_ratio))
-    brightness_factor = 1.0 / (1.0 + depth_ratio * 0.03)
-    enhancer = ImageEnhance.Brightness(rotated_img)
-    rotated_img = enhancer.enhance(brightness_factor)
-
-    # Apply base image color matching
-    if base_color_profile is not None:
-        rotated_img = apply_color_matching(rotated_img, base_color_profile)
-
-    rw, rh = rotated_img.size
-
-    paste_x = int(cx - rw / 2)
-    paste_y = int(cy - rh / 2)
-
-    shift_center_nail_distance = (h - ref_height) / 2.8
-
-    angle_rad = math.radians(float(angle))
-    ux = math.cos(angle_rad)
-    uy = math.sin(angle_rad)
-
-    shifted_x = int(paste_x - shift_center_nail_distance * ux)
-    shifted_y = int(paste_y - shift_center_nail_distance * uy)
-
-    nail_alpha = rotated_img.split()[-1]
-
-    # Generate smooth polygon mask via supersampling to avoid jagged edges.
-    supersample = 4
-    mask_w, mask_h = rotated_img.size
-    big_w, big_h = mask_w * supersample, mask_h * supersample
-    big_mask = Image.new("L", (big_w, big_h), 0)
-    big_draw = ImageDraw.Draw(big_mask)
-    adjusted_points = compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh)
-
-    # Need to sort points by a3d/z value : farest closet to paint (overlaped nails)
-
-    scaled_points = [(x * supersample, y * supersample) for x, y in adjusted_points]
-    big_draw.polygon(scaled_points, fill=255)
-    big_mask = big_mask.filter(ImageFilter.GaussianBlur(radius=GAUSSIAN_BLUR * supersample))
-    polygon_mask = big_mask.resize((mask_w, mask_h), Image.Resampling.LANCZOS)
-
-    final_mask = ImageChops.multiply(polygon_mask, nail_alpha)
-    base_image.paste(rotated_img, (shifted_x, shifted_y), final_mask)
 
 def draw_nail_debug(mask_draw, points, cx, cy, angle, w, h, z, a3d):
     debug_color = (0, 255, 0)
@@ -255,7 +164,7 @@ def main(original_image, reference_image, output_path):
             z < 0 → landmark is closer to the camera than the wrist
             z > 0 → landmark is further from the camera than the wrist
         '''
-        draw_nail_polish(base_image, ref_image, points, cx, cy, angle, w, h, z, a3d, base_color_profile)
+        paint_nail_pattern(base_image, ref_image, points, cx, cy, angle, w, h, z, a3d, base_color_profile)
         draw_nail_debug(mask_draw, points, cx, cy, angle, w, h, z, a3d)
 
     save_and_show_results(mask_image, base_image, output_path)
