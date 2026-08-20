@@ -21,7 +21,6 @@ Hand detection is performed using [MediaPipe Hands](https://developers.google.co
 
 - **Library version:** `mediapipe==0.10.13`
 - **Configuration:** `static_image_mode=False`, `max_num_hands=2`, `model_complexity=0`
-- **Optimization:** Detection runs on a downscaled version of the input frame (`MAX_DETECTION_DIM`) to reduce CPU usage, and landmark coordinates are mapped back to the original frame size.
 
 ### RoBoFlow RF-DETR Nail Segmentation
 
@@ -157,7 +156,6 @@ FastAPI app at `/`.
 | `NAIL_BLUR` | `2` | Gaussian blur radius applied to the nail mask |
 | `NAIL_GLOSS_INTENSITY` | `0.5` | Gloss intensity for the painted nails (`0.0`: off, `1.0`: maximum gloss) |
 | `YOLO_CONFIDENCE_THRESHOLD` | `0.5` | Minimum confidence for nail predictions |
-| `MAX_DETECTION_DIM` | `320` | Max pixel dimension for MediaPipe hand detection. Lower = faster. Set to `0` to disable. |
 | `MAX_PROCESS_FPS` | `20` | Max frames per second the server will process per WebSocket connection. |
 | `NO_HAND_COOLDOWN` | `1.0` | Seconds to skip processing after no hands are detected. |
 | `ROBOFLOW_MAX_DIM` | `1024` | Max pixel dimension for images sent to the RoBoFlow API. Lower = faster API response. |
@@ -175,8 +173,7 @@ Each frame from the browser WebSocket goes through this pipeline:
    `FRAME_SKIPPED_BLUR_THRESHOLD`, the original frame is returned immediately and
    processing is skipped, saving CPU.
 3. **Decode once** — The frame is decoded from JPEG bytes into a PIL Image.
-4. **Hand detection** — MediaPipe Hands runs on a downscaled version of the frame
-   (`MAX_DETECTION_DIM`) to detect hands and extract fingertip landmarks.
+4. **Hand detection** — MediaPipe Hands runs on the frame to detect hands and extract fingertip landmarks.
    If no hands are found, the original frame is returned.
 5. **Nail segmentation** — The full frame is sent to the RoBoFlow RF-DETR
    segmentation model, which returns nail region polygons.
@@ -208,7 +205,6 @@ The app includes several optimizations for CPU-limited hosting:
 - **Capture downscale:** Frames sent from the browser are downscaled to `MAX_CAPTURE_DIM` (1280px) to reduce bandwidth and backend processing time.
 - **Frame rate limiting:** Each WebSocket connection is capped at `MAX_PROCESS_FPS` to avoid CPU saturation.
 - **Blur skip:** Frames with low Laplacian variance are detected as blurry and returned unprocessed, skipping the expensive hand detection and API calls.
-- **Downscaled hand detection:** MediaPipe runs on a smaller image (`MAX_DETECTION_DIM`), then maps normalized coordinates back to the original frame.
 - **No-hand cooldown:** When no hands are detected, processing is skipped for `NO_HAND_COOLDOWN` seconds.
 - **Downscaled API requests:** Images sent to RoBoflow are resized to `ROBOFLOW_MAX_DIM`, then polygon coordinates are scaled back.
 - **Single image decode:** Each frame is decoded from JPEG bytes only once and reused across hand detection, API inference, and painting.
@@ -245,7 +241,6 @@ docker run -p 8000:8000 \
   -e NAIL_BLUR=2 \
   -e NAIL_GLOSS_INTENSITY=0.5 \
   -e YOLO_CONFIDENCE_THRESHOLD=0.5 \
-  -e MAX_DETECTION_DIM=320 \
   -e MAX_PROCESS_FPS=20 \
   -e NO_HAND_COOLDOWN=1.0 \
   -e ROBOFLOW_MAX_DIM=1024 \

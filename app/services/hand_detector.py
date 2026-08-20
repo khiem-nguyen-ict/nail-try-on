@@ -58,14 +58,11 @@ def is_blur(image_bytes: bytes, threshold: float = FRAME_SKIPPED_BLUR_THRESHOLD)
         return True
 
 
-def detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_image: Union[Image.Image, None] = None):
+def detect_hands(image_source: Union[str, bytes], preloaded_image: Union[Image.Image, None] = None):
     """Detect hands in an image and return finger tips in JSON format.
 
     Args:
         image_source: Path to the image file or JPEG bytes.
-        max_dim: Maximum dimension for the image used for detection.
-            Smaller values are faster but may reduce accuracy.
-            When 0 (default), no downscaling is applied.
         preloaded_image: Optional pre-decoded PIL Image to avoid
             re-reading ``image_source``.
 
@@ -81,16 +78,7 @@ def detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_im
     if image.mode != "RGB":
         image = image.convert("RGB")
 
-    # Downscale for faster detection
-    detection_image = image
-    if max_dim > 0:
-        w, h = image.size
-        scale = min(1.0, max_dim / max(w, h))
-        if scale < 1.0:
-            new_w, new_h = int(w * scale), int(h * scale)
-            detection_image = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
-
-    image_np = np.array(detection_image)
+    image_np = np.array(image)
 
     results = hands_detector.process(image_np)
     
@@ -123,9 +111,9 @@ def detect_hands(image_source: Union[str, bytes], max_dim: int = 0, preloaded_im
 
                 hand_entry["fingertips"].append({
                     "landmark_id": lm_id,
-                    "x": round(lm.x, 6),
-                    "y": round(lm.y, 6),
-                    "z": round(lm.z, 6),
+                    "x": round(lm.x, 12),
+                    "y": round(lm.y, 12),
+                    "z": round(lm.z, 12),
                     "a": angle_deg,
                     "a3d": plane_angle,
                 })

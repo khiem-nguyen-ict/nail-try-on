@@ -14,7 +14,6 @@ from app.services.nail_painter import paint_nails
 
 def process_frame_with_hand_status(
     image_bytes: bytes,
-    max_dim: int,
     roboflow_max_dim: int,
     color: tuple = RED,
     alpha: float = NAIL_ALPHA,
@@ -31,13 +30,13 @@ def process_frame_with_hand_status(
             width, height = image.size
 
         # Layer 2: Hand detection
-        hands_data = _detect_hands(image_bytes, max_dim=max_dim, preloaded_image=image)
+        hands_data = detect_hands(image_bytes, preloaded_image=image)
 
         if not hands_data:
             return image_bytes, False, "no_hands"
 
         # Layer 3: Nail detection + filtering
-        nails = detect_nails(image_bytes, max_dim=roboflow_max_dim)
+        nails = detect_nails(image_bytes)
         raw_predictions = nails.get("predictions", [])
 
         if not raw_predictions:

@@ -12,8 +12,6 @@ services:
         value: 2
       - key: YOLO_CONFIDENCE_THRESHOLD
         value: 0.5
-      - key: MAX_DETECTION_DIM
-        value: 320
       - key: MAX_PROCESS_FPS
         value: 10
       - key: NO_HAND_COOLDOWN
