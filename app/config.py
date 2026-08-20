@@ -1,4 +1,5 @@
 import os
+import warnings
 
 import numpy as np
 from dotenv import load_dotenv
@@ -26,4 +27,8 @@ URL = "https://serverless.roboflow.com/thanh-khiem-nguyen/nails_segmentation-m8e
 PARAMS = {"api_key": os.getenv("ROBOFLOW_API_KEY", ""), "confidence": YOLO_CONFIDENCE_THRESHOLD}
 
 if not os.getenv("ROBOFLOW_API_KEY"):
-    raise RuntimeError("ROBOFLOW_API_KEY environment variable is not set. Please set it to your RoBoFlow API key.")
+    warnings.warn(
+        "ROBOFLOW_API_KEY environment variable is not set. Nail detection features will not work. "
+        "Set it in your deployment environment (e.g., Render dashboard) to enable them.",
+        RuntimeWarning,
+    )
