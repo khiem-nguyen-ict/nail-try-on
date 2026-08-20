@@ -20,7 +20,7 @@ This project relies on two machine learning components:
 Hand detection is performed using [MediaPipe Hands](https://developers.google.com/mediapipe/solutions/vision/hand_landmarker). The model runs locally in the backend and returns 21 hand landmarks per detected hand, from which the five fingertip positions are extracted.
 
 - **Library version:** `mediapipe==0.10.13`
-- **Configuration:** `static_image_mode=False`, `max_num_hands=2`, `model_complexity=0`
+- **Configuration:** `static_image_mode=True`, `max_num_hands=2`, `model_complexity=1`, `min_detection_confidence=0.85`, `min_tracking_confidence=0.85`
 
 ### RoBoFlow RF-DETR Nail Segmentation
 
@@ -30,11 +30,12 @@ Nail regions are segmented using a [RoBoFlow](https://roboflow.com/) serverless 
 - **Output:** Polygon masks for detected nail regions with confidence scores
 - **Filtering:** Every detected nail is kept and matched to its nearest fingertip via a one-to-one assignment (no hand-tuned proximity threshold). Nails that cannot be paired with a finger fall back to an orientation derived from their own polygon shape, so none are dropped.
 - **Optimization:** Images sent to the API are downscaled to `ROBOFLOW_MAX_DIM` to reduce latency and response size
+- **Debug output:** Passing `debug_save_path` to `detect_hands()` generates a visualization with fingertip (red), DIP (green), dashed connecting lines, and finger ID labels for manual verification.
 
 ## Best Output Samples
 
-The `nails_beauty.ipynb` notebook demonstrates two offline generation methods
-using the same RoBoFlow nail segmentation mask:
+The `nails_beauty.ipynb` notebook demonstrates offline generation methods
+using the same hand image and segmentation mask:
 
 ### Input Image
 ![Input Image](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand.webp?raw=true)
@@ -46,8 +47,7 @@ using the same RoBoFlow nail segmentation mask:
 Uses Stable Diffusion XL inpainting with text prompts to generate realistic
 painted nails while preserving hand lighting and texture.
 
-![Sample 1](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-nails-1.webp?raw=true)
-![Sample 2](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-nails-2.webp?raw=true)
+![Sample 1](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-output.webp?raw=true)
 
 ### Method 2: Pattern Overlay (Nail Art)
 Tiles a pattern image across the nail regions and blends it with the original
@@ -57,7 +57,7 @@ hand using a feathered mask and multiply blending to retain natural shadows.
 
 ## Static Painting Experiment
 
-The `experiments/static-painting.py` script demonstrates offline nail painting
+The `experiments/static_painting.py` script demonstrates offline nail painting
 using a reference pattern image and the RoBoFlow segmentation mask. It supports
 depth-based lighting using the MediaPipe `z` coordinate:
 
@@ -66,8 +66,15 @@ depth-based lighting using the MediaPipe `z` coordinate:
   and those further away appear dimmer.
 - **Color matching:** Nail colors are subtly adjusted to harmonize with the base
   image HSV profile.
-- **Outputs:** Generates a painted result and a debug mask under
-  `sample-images/`.
+- **Nail depth sorting:** Nails are sorted by depth (`z` sum of polygon points)
+  and 3D angle (`a3d`) before painting so overlapping nails render in correct
+  back-to-front order.
+- **MediaPipe debug output:** When `detect_hands()` is called with
+  `debug_save_path`, it saves a visualization showing fingertip landmarks (red),
+  DIP landmarks (green), dashed white connecting lines, and finger ID labels.
+  The script writes these as `*-mp-debug.*` files alongside the painted outputs.
+- **Outputs:** Generates a painted result, a debug mask, and a MediaPipe debug
+  image under `sample-images/`.
 
 ## Project Structure
 
@@ -173,7 +180,9 @@ Each frame from the browser WebSocket goes through this pipeline:
    `FRAME_SKIPPED_BLUR_THRESHOLD`, the original frame is returned immediately and
    processing is skipped, saving CPU.
 3. **Decode once** — The frame is decoded from JPEG bytes into a PIL Image.
-4. **Hand detection** — MediaPipe Hands runs on the frame to detect hands and extract fingertip landmarks.
+4. **Hand detection** — MediaPipe Hands runs on the frame in static-image mode
+   (`static_image_mode=True`, `model_complexity=1`) with detection and tracking
+   confidence at `0.85` to extract fingertip landmarks.
    If no hands are found, the original frame is returned.
 5. **Nail segmentation** — The full frame is sent to the RoBoFlow RF-DETR
    segmentation model, which returns nail region polygons.

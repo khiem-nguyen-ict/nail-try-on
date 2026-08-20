@@ -12,10 +12,11 @@ from app.config import (
 
 mp_hands = mp.solutions.hands
 hands_detector = mp_hands.Hands(
-    static_image_mode=False,
+    static_image_mode=True,
     max_num_hands=2,
     model_complexity=1,
-    min_detection_confidence=0.8
+    min_detection_confidence=0.85,
+    min_tracking_confidence=0.85
 )
 
 FINGERTIP_IDS = [4, 8, 12, 16, 20]
@@ -58,13 +59,15 @@ def is_blur(image_bytes: bytes, threshold: float = FRAME_SKIPPED_BLUR_THRESHOLD)
         return True
 
 
-def detect_hands(image_source: Union[str, bytes], preloaded_image: Union[Image.Image, None] = None):
+def detect_hands(image_source: Union[str, bytes], preloaded_image: Union[Image.Image, None] = None, debug_save_path: Union[str, None] = None):
     """Detect hands in an image and return finger tips in JSON format.
 
     Args:
         image_source: Path to the image file or JPEG bytes.
         preloaded_image: Optional pre-decoded PIL Image to avoid
             re-reading ``image_source``.
+        debug_save_path: If provided, save a debug image with all hand
+            landmarks drawn as red circles to this path.
 
     Returns:
         A JSON string representing a list of detected hands.
@@ -84,6 +87,42 @@ def detect_hands(image_source: Union[str, bytes], preloaded_image: Union[Image.I
     
     output = []
     if results.multi_hand_landmarks:
+        if debug_save_path is not None:
+            debug_image = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+            h, w = debug_image.shape[:2]
+            for idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
+                for lm_id in FINGERTIP_IDS:
+                    lm = hand_landmarks.landmark[lm_id]
+                    dip_id = FINGERTIP_DIP_MAP[lm_id]
+                    dip_lm = hand_landmarks.landmark[dip_id]
+                
+                    cx, cy = int(lm.x * w), int(lm.y * h)
+                    cv2.circle(debug_image, (cx, cy), 15, (0, 0, 255), -1)
+                    cx2, cy2 = int(dip_lm.x * w), int(dip_lm.y * h)
+                    cv2.circle(debug_image, (cx2, cy2), 15, (0, 255, 0), -1)
+
+                    # Draw dashed white line between DIP and TIP
+                    dash_len = 10
+                    gap_len = 10
+                    dx = cx2 - cx
+                    dy = cy2 - cy
+                    dist = (dx**2 + dy**2) ** 0.5
+                    if dist > 0:
+                        dx_u = dx / dist
+                        dy_u = dy / dist
+                        pos = 0
+                        while pos < dist:
+                            end_pos = min(pos + dash_len, dist)
+                            x1 = int(cx + dx_u * pos)
+                            y1 = int(cy + dy_u * pos)
+                            x2 = int(cx + dx_u * end_pos)
+                            y2 = int(cy + dy_u * end_pos)
+                            cv2.line(debug_image, (x1, y1), (x2, y2), (255, 255, 255), 2)
+                            pos += dash_len + gap_len
+
+                    cv2.putText(debug_image, f"finger: {lm_id}", (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 2, cv2.LINE_AA)
+            cv2.imwrite(debug_save_path, debug_image)
+
         for idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
             hand_entry = {
                 "hand_index": idx,
