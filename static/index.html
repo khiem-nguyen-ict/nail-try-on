@@ -188,6 +188,43 @@
             width: 160px;
             cursor: pointer;
         }
+
+        /* Nail pattern gallery */
+        #patternGallery {
+            position: fixed;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 16px;
+            z-index: 20;
+            backdrop-filter: blur(8px);
+        }
+        #patternGallery.visible {
+            display: flex;
+        }
+        .pattern-thumb {
+            width: 48px;
+            height: 48px;
+            border-radius: 10px;
+            border: 3px solid transparent;
+            cursor: pointer;
+            object-fit: contain;
+            transition: transform 0.15s ease, border-color 0.15s ease;
+            background: #222;
+        }
+        .pattern-thumb:hover {
+            transform: scale(1.1);
+        }
+        .pattern-thumb.selected {
+            border-color: #fff;
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.4);
+            transform: scale(1.05);
+        }
     </style>
 </head>
 <body>
@@ -242,6 +279,11 @@
         <input type="range" id="opacitySlider" min="0.1" max="0.8" step="0.1" value="{{NAIL_ALPHA}}" />
         <span id="opacityValue"></span>
     </div>
+
+    <div id="patternGallery">
+        <img class="pattern-thumb" src="/patterns/sample.png" data-pattern="sample.png" title="Pinky" />
+        <img class="pattern-thumb" src="/patterns/sample-2.png" data-pattern="sample-2.png" title="Crystal" />
+    </div>
     
     <script>
         const video = document.getElementById('video');
@@ -252,6 +294,7 @@
         const uploadBtn = document.getElementById('uploadBtn');
         const fileInput = document.getElementById('fileInput');
         const loadingSpinner = document.getElementById('loadingSpinner');
+        const patternGallery = document.getElementById('patternGallery');
 
         const BACKGROUND_IMAGE = 'https://assets.vogue.com/photos/691f357cc27b47cad254eb6d/master/w_1600%2Cc_limit/SaveClip.App_579687142_18379744144178067_1109136112459296107_n.jpg';
         
@@ -352,6 +395,7 @@
             fileInput.value = '';
             lastUploadedFile = null;
             loadingSpinner.style.display = 'none';
+            patternGallery.classList.remove('visible');
         }
 
         function repaintImage() {
@@ -375,12 +419,53 @@
             })
             .then(blob => {
                 if(processing) {
+                    if (output.src && output.src.startsWith('blob:')) {
+                        URL.revokeObjectURL(output.src);
+                    }
                     output.src = URL.createObjectURL(blob);
                     output.style.opacity = 1;
+                    patternGallery.classList.add('visible');
                 }   
             })
             .catch(err => {
                 console.error('Repaint error:', err);
+            })
+            .finally(() => {
+                loadingSpinner.style.display = 'none';
+                processing = false;
+            });
+        }
+
+        function paintWithPattern(patternFilename) {
+            if (!lastUploadedFile || processing) return;
+            processing = true;
+            const formData = new FormData();
+            formData.append('file', lastUploadedFile);
+
+            startBtn.classList.add('hidden');
+            uploadBtn.style.display = 'none';
+            backBtn.style.display = 'flex';
+            loadingSpinner.style.display = 'block';
+
+            fetch(`/paint_pattern?pattern=${encodeURIComponent(patternFilename)}`, {
+                method: 'POST',
+                body: formData,
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Pattern paint failed');
+                return response.blob();
+            })
+            .then(blob => {
+                if (processing) {
+                    if (output.src && output.src.startsWith('blob:')) {
+                        URL.revokeObjectURL(output.src);
+                    }
+                    output.src = URL.createObjectURL(blob);
+                    output.style.opacity = 1;
+                }
+            })
+            .catch(err => {
+                console.error('Pattern paint error:', err);
             })
             .finally(() => {
                 loadingSpinner.style.display = 'none';
@@ -467,6 +552,17 @@
             } else if (lastUploadedFile) {
                 repaintImage();
             }
+        });
+
+        // Pattern gallery logic
+        const patternThumbs = document.querySelectorAll('.pattern-thumb');
+
+        patternThumbs.forEach(thumb => {
+            thumb.addEventListener('click', () => {
+                patternThumbs.forEach(t => t.classList.remove('selected'));
+                thumb.classList.add('selected');
+                paintWithPattern(thumb.dataset.pattern);
+            });
         });
 
         document.addEventListener('DOMContentLoaded', () => {
