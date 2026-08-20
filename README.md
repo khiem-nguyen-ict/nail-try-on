@@ -32,22 +32,40 @@ Nail regions are segmented using a [RoBoFlow](https://roboflow.com/) serverless 
 - **Optimization:** Images sent to the API are downscaled to `ROBOFLOW_MAX_DIM` to reduce latency and response size
 - **Debug output:** Passing `debug_save_path` to `detect_hands()` generates a visualization with fingertip (red), DIP (green), dashed connecting lines, and finger ID labels for manual verification.
 
-## Best Output Samples
+## Pipeline Steps
 
-The `experiments/static_painting.py` script demonstrates offline nail painting
-using a reference pattern image and the RoBoFlow segmentation mask:
+The `experiments/static_painting.py` script demonstrates each step of the
+offline nail painting pipeline on the same input image:
 
-### Input Image
-![Input Image](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand.webp?raw=true)
+### 1. Original Image
+Input image fed into the pipeline.
 
-### Nail Segmentation Mask
-![Nail Mask](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/nail_mask.webp?raw=true)
+![Original](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand.webp?raw=true)
 
-### Static Painting Result
-Overlays the reference pattern (`sample-2.png`) onto the segmented nail regions
-with depth-based brightness and color matching to harmonize with the base image.
+### 2. Hand Landmark Detection
+MediaPipe Hands detects 21 hand landmarks per hand. Fingertip landmarks (red)
+and DIP landmarks (green) are drawn with dashed white connecting lines and
+finger ID labels. This step extracts finger angles, 3D angles (`a3d`), and
+depth (`z`) for each fingertip.
 
-![Sample 1](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-output.webp?raw=true)
+![Hand Debug](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-output-mp-debug.webp?raw=true)
+
+### 3. Nail Segmentation Mask
+RoBoFlow RF-DETR segments nail regions as polygons. Each polygon is matched to
+its nearest fingertip using a one-to-one assignment so every fingertip is
+paired with at most one nail. Nails that cannot be paired fall back to an
+orientation derived from their own polygon shape.
+
+![Nail Mask](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-output-mask.webp?raw=true)
+
+### 4. Final Painted Result
+The selected nail regions are recolored with full HSV color transfer, blended
+at `NAIL_ALPHA` and blurred with `NAIL_BLUR`. A distance-transform-based
+glossy effect simulates light reflection on the nail surface. Nails are sorted
+by depth (`z` sum) and 3D angle (`a3d`) before painting so overlapping nails
+render in correct back-to-front order.
+
+![Final Result](https://github.com/khiem-nguyen-ict/nail-try-on/blob/main/sample-images/hand-output.webp?raw=true)
 
 ## Static Painting Experiment
 
