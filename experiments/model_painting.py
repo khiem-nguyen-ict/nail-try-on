@@ -8,8 +8,6 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from app.config import MAX_DETECTION_DIM
-
 # Fix for macOS CPU where torch.xpu is unavailable but diffusers checks for it.
 if not hasattr(torch, "xpu"):
     class _DummyXPU:
@@ -60,7 +58,7 @@ base_image = load_image(ORIGINAL_IMAGE).convert("RGB")
 with open(ORIGINAL_IMAGE, "rb") as f:
     image_bytes = f.read()
 
-hands_data = detect_hands(image_bytes, max_dim=MAX_DETECTION_DIM)
+hands_data = detect_hands(image_bytes)
 if not hands_data:
     print("No hands detected in the image. Please provide an image with visible hands.")
     exit(1)

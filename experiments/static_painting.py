@@ -1,24 +1,20 @@
 import json
 import sys
 import os
-import colorsys
 import cv2
 import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.config import MAX_DETECTION_DIM
+from app.utils.image import apply_color_matching, get_base_image_color_profile
+from app.utils.polygon import get_nail_size, compute_adjusted_points
+
 from app.services.hand_detector import detect_hands
 from app.services.nail_detector import detect_nails, filter_nails_by_hands
 from PIL import Image, ImageDraw, ImageFilter, ImageChops, ImageOps, ImageEnhance, ImageStat, ImageFont
 import math
 
 GAUSSIAN_BLUR=6
-
-# Color matching defaults
-COLOR_MATCH_HUE_SHIFT = 0.04       # max hue shift toward base image (0-1, fraction of hue circle)
-COLOR_MATCH_SATURATION = 0.15      # how much to blend saturation toward base image (0-1)
-COLOR_MATCH_BRIGHTNESS = 0.2       # how much to blend brightness toward base image (0-1)
 
 ORIGINAL_IMAGE = "sample-images/hand-6.jpg"
 REFERENCE_IMAGE = "sample-images/sample-2.png"
@@ -28,7 +24,6 @@ DEBUG_FONT_PATHS = [
     "/System/Library/Fonts/Helvetica.ttc",
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
 ]
-
 
 def get_debug_font(length):
     """Return a font scaled proportionally to the nail length."""
@@ -40,72 +35,6 @@ def get_debug_font(length):
             continue
     return ImageFont.load_default(size=font_size)
 
-
-def get_base_image_color_profile(base_image):
-    """Analyze base image and return average HSV values."""
-    small = base_image.resize((64, 64), Image.Resampling.LANCZOS)
-    stat = ImageStat.Stat(small)
-    r_mean = stat.mean[0] / 255.0
-    g_mean = stat.mean[1] / 255.0
-    b_mean = stat.mean[2] / 255.0
-    h, s, v = colorsys.rgb_to_hsv(r_mean, g_mean, b_mean)
-    return {"hue": h, "saturation": s, "brightness": v}
-
-
-def apply_color_matching(nail_img, base_profile):
-    """Subtly adjust nail HSV per-pixel to harmonize with base image."""
-    if nail_img.mode != "RGBA":
-        nail_img = nail_img.convert("RGBA")
-
-    r, g, b, a = nail_img.split()
-    rgb_img = Image.merge("RGB", (r, g, b))
-    hsv_img = rgb_img.convert("HSV")
-    h, s, v = hsv_img.split()
-
-    # Compute circular hue shift toward base hue
-    base_h = base_profile["hue"]
-    hue_diff = base_h
-    # We'll shift each pixel's hue by a fraction of the shortest path to base_h
-    # Build a lookup table for hue channel (0-255)
-    h_lut = []
-    for i in range(256):
-        ph = i / 255.0
-        diff = base_h - ph
-        if diff > 0.5:
-            diff -= 1.0
-        elif diff < -0.5:
-            diff += 1.0
-        shifted = ph + diff * COLOR_MATCH_HUE_SHIFT
-        h_lut.append(int(shifted % 1.0 * 255))
-    h_new = h.point(h_lut)
-
-    # Saturation: blend each pixel toward base saturation
-    base_s = base_profile["saturation"]
-    s_lut = []
-    for i in range(256):
-        ps = i / 255.0
-        blended = ps + (base_s - ps) * COLOR_MATCH_SATURATION
-        s_lut.append(int(max(0.0, min(1.0, blended)) * 255))
-    s_new = s.point(s_lut)
-
-    # Value/brightness: blend each pixel toward base brightness
-    base_v = base_profile["brightness"]
-    v_lut = []
-    for i in range(256):
-        pv = i / 255.0
-        blended = pv + (base_v - pv) * COLOR_MATCH_BRIGHTNESS
-        v_lut.append(int(max(0.0, min(1.0, blended)) * 255))
-    v_new = v.point(v_lut)
-
-    hsv_matched = Image.merge("HSV", (h_new, s_new, v_new))
-    rgb_matched = hsv_matched.convert("RGB")
-
-    # Set alpha to 0.9 and apply Gaussian blur
-    a = a.point(lambda x: int(x * 0.95))
-    a = a.filter(ImageFilter.GaussianBlur(radius=2))
-
-    return Image.merge("RGBA", (*rgb_matched.split(), a))
-
 def load_or_compute(json_path, compute_fn):
     if os.path.exists(json_path):
         with open(json_path, "r") as f:
@@ -115,88 +44,6 @@ def load_or_compute(json_path, compute_fn):
         with open(json_path, "w") as f:
             json.dump(data, f, indent=2)
     return data
-
-
-def get_rect_boundary(start_x, start_y, dx, dy, rect_x, rect_y, rect_w, rect_h):
-    if dx == 0 and dy == 0:
-        return None
-    t_values = []
-    eps = 1e-9
-    if dx > eps:
-        t = (rect_x + rect_w - start_x) / dx
-        if t > 0:
-            y_hit = start_y + t * dy
-            if rect_y <= y_hit <= rect_y + rect_h:
-                t_values.append(t)
-    elif dx < -eps:
-        t = (rect_x - start_x) / dx
-        if t > 0:
-            y_hit = start_y + t * dy
-            if rect_y <= y_hit <= rect_y + rect_h:
-                t_values.append(t)
-    if dy > eps:
-        t = (rect_y + rect_h - start_y) / dy
-        if t > 0:
-            x_hit = start_x + t * dx
-            if rect_x <= x_hit <= rect_x + rect_w:
-                t_values.append(t)
-    elif dy < -eps:
-        t = (rect_y - start_y) / dy
-        if t > 0:
-            x_hit = start_x + t * dx
-            if rect_x <= x_hit <= rect_x + rect_w:
-                t_values.append(t)
-    if t_values:
-        t_max = max(t_values)
-        return (start_x + t_max * dx, start_y + t_max * dy)
-    return None
-
-
-def compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh):
-    if not points:
-        return []
-    angle_rad = math.radians(float(angle))
-    ux = math.cos(angle_rad)
-    uy = math.sin(angle_rad)
-    projections = []
-    for x, y in points:
-        dx = x - cx
-        dy = y - cy
-        proj = dx * ux + dy * uy
-        projections.append((proj, x, y, dx, dy))
-    if not projections:
-        return [(x - shifted_x, y - shifted_y) for x, y in points]
-    min_proj = min(p[0] for p in projections)
-    max_proj = max(p[0] for p in projections)
-    cut_proj = (min_proj + max_proj) / 2
-    adjusted = []
-    for proj, x, y, dx, dy in projections:
-        if proj > cut_proj and (dx != 0 or dy != 0):
-            boundary = get_rect_boundary(cx, cy, dx, dy, shifted_x, shifted_y, rw, rh)
-            if boundary:
-                new_x, new_y = boundary
-            else:
-                new_x, new_y = x, y
-        else:
-            new_x, new_y = x, y
-        adjusted.append((new_x - shifted_x, new_y - shifted_y))
-    return adjusted
-
-def get_nail_size(a: float, w: float, h: float):
-    # Handle undefined angles
-    if abs(a) > 180:
-        print(f"Angle {a} falls into undefined cases!")
-        return 0.0, 0.0
-
-    # Convert angle from degrees to radians
-    rad = math.radians(a)
-
-    # Calculate squared weights
-    cos_sq = math.cos(rad) ** 2
-    sin_sq = math.sin(rad) ** 2
-
-    # Smoothly blend between H (near 0°, ±180°) and W (near ±90°)
-    return (cos_sq * h) + (sin_sq * w), (sin_sq * h) + (cos_sq * w)
 
 def draw_nail_polish(base_image, sample_image, points, cx, cy, angle, w, h, z, a3d, base_color_profile=None):
     sample_img_w, sample_img_h = sample_image.size
@@ -275,6 +122,9 @@ def draw_nail_polish(base_image, sample_image, points, cx, cy, angle, w, h, z, a
     big_mask = Image.new("L", (big_w, big_h), 0)
     big_draw = ImageDraw.Draw(big_mask)
     adjusted_points = compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh)
+
+    # Need to sort points by a3d/z value : farest closet to paint (overlaped nails)
+
     scaled_points = [(x * supersample, y * supersample) for x, y in adjusted_points]
     big_draw.polygon(scaled_points, fill=255)
     big_mask = big_mask.filter(ImageFilter.GaussianBlur(radius=GAUSSIAN_BLUR * supersample))
@@ -362,7 +212,7 @@ def main(original_image, reference_image, output_path=None):
 
     hands_data = load_or_compute(
         original_image + ".hands_data.json",
-        lambda: detect_hands(image_bytes, max_dim=MAX_DETECTION_DIM),
+        lambda: detect_hands(image_bytes),
     )
     if not hands_data:
         print(f"No hands detected in {original_image}. Skipping.")
@@ -371,7 +221,7 @@ def main(original_image, reference_image, output_path=None):
     filtered_nails = load_or_compute(
         original_image + ".nails_data.json",
         lambda: filter_nails_by_hands(
-            detect_nails(image_bytes, max_dim=MAX_DETECTION_DIM),
+            detect_nails(image_bytes),
             hands_data,
             width,
             height,
@@ -415,7 +265,7 @@ if __name__ == "__main__":
     for filename in sorted(os.listdir(sample_dir)):
         if filename.startswith("hand"):
             name, ext = os.path.splitext(filename)
-            if ext.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif"} or "-output" in filename:
+            if ext.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif"} or "-output" in filename or "-enhance" in filename:
                 continue
             image_path = os.path.join(sample_dir, filename)
             output_path = os.path.join(sample_dir, f"{name}-output{ext}")

@@ -1,4 +1,4 @@
-def _hex_to_rgb(hex_color: str) -> tuple:
+def hex_to_rgb(hex_color: str) -> tuple:
     """Convert a hex color string (e.g. '#FF0000' or 'FF0000') to an RGB tuple."""
     RED = (255, 0, 0)
     hex_color = hex_color.lstrip("#")

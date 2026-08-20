@@ -20,13 +20,12 @@ from app.config import (
     MAX_SEND_FPS,
     NAIL_ALPHA,
     IMAGE_QUALITY,
-    MAX_DETECTION_DIM,
     ROBOFLOW_MAX_DIM,
     NAIL_BLUR,
     NO_HAND_COOLDOWN,
     MAX_PROCESS_FPS,
 )
-from app.utils.color import _hex_to_rgb
+from app.utils.color import hex_to_rgb
 from app.services.frame_processor import process_frame_with_hand_status
 
 
@@ -50,7 +49,7 @@ def create_app() -> FastAPI:
         last_process_time = 0.0
         min_interval = 1.0 / MAX_PROCESS_FPS
         skip_until = 0
-        current_color = _hex_to_rgb(color)
+        current_color = hex_to_rgb(color)
         current_opacity = float(opacity)
 
         try:
@@ -67,7 +66,7 @@ def create_app() -> FastAPI:
                             if isinstance(payload, dict):
                                 if payload.get("type") == "color":
                                     new_color = payload.get("value", "FF0000")
-                                    current_color = _hex_to_rgb(new_color)
+                                    current_color = hex_to_rgb(new_color)
                                 elif payload.get("type") == "opacity":
                                     new_opacity = payload.get("value", NAIL_ALPHA)
                                     current_opacity = max(0.1, min(0.8, float(new_opacity)))
@@ -88,7 +87,7 @@ def create_app() -> FastAPI:
                         continue
 
                     processed, hands_found, reason = await asyncio.to_thread(
-                        process_frame_with_hand_status, data, MAX_DETECTION_DIM, ROBOFLOW_MAX_DIM, current_color, current_opacity
+                        process_frame_with_hand_status, data, ROBOFLOW_MAX_DIM, current_color, current_opacity
                     )
                     last_process_time = now
 
@@ -115,9 +114,8 @@ def create_app() -> FastAPI:
         processed, _, _ = await asyncio.to_thread(
             process_frame_with_hand_status,
             image_bytes,
-            MAX_DETECTION_DIM,
             ROBOFLOW_MAX_DIM,
-            _hex_to_rgb(color),
+            hex_to_rgb(color),
             float(opacity),
             NAIL_BLUR
         )
