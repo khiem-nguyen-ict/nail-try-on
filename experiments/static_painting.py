@@ -191,8 +191,6 @@ def draw_nail_debug(mask_draw, points, cx, cy, angle, w, h, z, a3d):
     
 
 def save_and_show_results(mask_image, base_image, output_path=None):
-    if output_path is None:
-        output_path = "sample-images/static-nail-painting.jpg"
     base_image.save(output_path)
     mask_path = output_path.replace(os.path.splitext(output_path)[1], "-mask" + os.path.splitext(output_path)[1])
     mask_image.save(mask_path)
@@ -202,7 +200,7 @@ def save_and_show_results(mask_image, base_image, output_path=None):
     print(f"Saved mask: {mask_path}")
 
 
-def main(original_image, reference_image, output_path=None):
+def main(original_image, reference_image, output_path):
     base_image = ImageOps.exif_transpose(Image.open(original_image)).convert("RGB")
     ref_image = Image.open(reference_image).convert("RGBA")
     with open(original_image, "rb") as f:
@@ -210,9 +208,11 @@ def main(original_image, reference_image, output_path=None):
 
     width, height = base_image.size
 
+    f = output_path.replace(os.path.splitext(output_path)[1], "-mp-debug" + os.path.splitext(output_path)[1])
+
     hands_data = load_or_compute(
         original_image + ".hands_data.json",
-        lambda: detect_hands(image_bytes),
+        lambda: detect_hands(image_bytes, debug_save_path=f),
     )
     if not hands_data:
         print(f"No hands detected in {original_image}. Skipping.")
@@ -230,6 +230,8 @@ def main(original_image, reference_image, output_path=None):
     if not filtered_nails:
         print(f"No nails detected in {original_image}. Skipping.")
         return False
+
+    filtered_nails.sort(key=lambda nail: (sum(p["z"] for p in nail.get("points", [])), nail.get("a3d", 0)))
 
     mask_image = Image.new("RGB", (width, height), (0, 0, 0))
     mask_draw = ImageDraw.Draw(mask_image)
@@ -262,10 +264,12 @@ def main(original_image, reference_image, output_path=None):
 if __name__ == "__main__":
     sample_dir = "sample-images"
     ref_image = "sample-images/sample-2.png"
+    ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif"}
+    EXCLUDED_PATTERNS = ("-output", "-enhance", "-debug", "-mp-debug")
     for filename in sorted(os.listdir(sample_dir)):
         if filename.startswith("hand"):
             name, ext = os.path.splitext(filename)
-            if ext.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif"} or "-output" in filename or "-enhance" in filename:
+            if ext.lower() not in ALLOWED_EXTENSIONS or any(pattern in filename for pattern in EXCLUDED_PATTERNS):
                 continue
             image_path = os.path.join(sample_dir, filename)
             output_path = os.path.join(sample_dir, f"{name}-output{ext}")
