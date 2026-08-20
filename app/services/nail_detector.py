@@ -126,13 +126,11 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
     This removes the old ``SPACE_DETECTION_THRESHOLD`` dilemma:
       * Wrong-finger matches are prevented by the exclusive one-to-one
         assignment -- a fingertip can no longer be shared by several nails.
-      * No nail is ever dropped. A nail paired with a fingertip inherits that
-        finger's angle/z/landmark (the most accurate orientation). A nail that
-        cannot be paired (e.g. more nails than fingertips, or a stray
-        detection) falls back to the orientation derived from its own polygon
-        geometry, so it is still painted rather than missed.
+      * Matched fingertips are marked in ``hands_data`` (``matched: True``)
+        so downstream consumers can inspect which tips were consumed.
 
-    Returns one entry per detected nail prediction.
+    Returns one entry per matched nail prediction (nails without a nearby
+    fingertip are dropped, not returned with a fallback orientation).
     """
     predictions = []
     for pred in nails_result.get("predictions", []):
@@ -150,8 +148,9 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
     ]
 
     fingertips_px = []
-    for hand in hands_data:
-        for tip in hand.get("fingertips", []):
+    fingertip_origins = []
+    for hi, hand in enumerate(hands_data):
+        for ti, tip in enumerate(hand.get("fingertips", [])):
             fingertips_px.append({
                 "x": tip["x"] * width,
                 "y": tip["y"] * height,
@@ -160,6 +159,7 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
                 "a3d": tip.get("a3d"),
                 "landmark_id": tip.get("landmark_id"),
             })
+            fingertip_origins.append((hi, ti))
 
     # One-to-one assignment of fingertips to nails (nearest available wins).
     # Process pairs from nearest to farthest; because pairs are sorted by
@@ -181,6 +181,11 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
             nail_to_ft[ni] = fi
             used_ft.add(fi)
 
+        # Mark matched fingertips in the original hands_data structure.
+        for ni, fi in nail_to_ft.items():
+            hi, ti = fingertip_origins[fi]
+            hands_data[hi]["fingertips"][ti]["matched"] = True
+
     filtered = []
     for ni, pred in enumerate(predictions):
         fi = nail_to_ft.get(ni)
@@ -196,8 +201,9 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
             if ft.get("landmark_id") is not None:
                 pred_copy["landmark_id"] = ft["landmark_id"]
         else:
-            # No nearby finger: derive orientation from the nail shape itself.
-            pred_copy["angle"] = _nail_orientation(polygons[ni])
+            # No nearby finger: drop this nail instead of returning a
+            # fallback orientation.
+            continue
 
         rounded_points = []
         for p in pred_copy.get("points", []):
