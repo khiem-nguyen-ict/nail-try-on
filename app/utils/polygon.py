@@ -73,7 +73,12 @@ def compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh)
     adjusted_convex = make_polygon_convex(adjusted)
     return adjusted_convex
 
-def get_nail_size(a: float, w: float, h: float):
+def get_nail_size(a: float, points):
+    # Find the width and height of the boundary rectangle containing the polygon points,
+    # aligned with the vector that has angle a.
+    # The width is the side perpendicular to the vector that has angle a;
+    # the height is the side parallel to the vector a.
+
     # Handle undefined angles
     if abs(a) > 180:
         print(f"Angle {a} falls into undefined cases!")
@@ -82,9 +87,19 @@ def get_nail_size(a: float, w: float, h: float):
     # Convert angle from degrees to radians
     rad = math.radians(a)
 
-    # Calculate squared weights
-    cos_sq = math.cos(rad) ** 2
-    sin_sq = math.sin(rad) ** 2
+    # Unit vector parallel to the vector with angle a
+    ux = math.cos(rad)
+    uy = math.sin(rad)
 
-    # Smoothly blend between H (near 0°, ±180°) and W (near ±90°)
-    return (cos_sq * h) + (sin_sq * w), (sin_sq * h) + (cos_sq * w)
+    # Unit vector perpendicular to the vector with angle a
+    px = -uy
+    py = ux
+
+    pts = np.asarray(points, dtype=float)
+    proj_parallel = pts[:, 0] * ux + pts[:, 1] * uy
+    proj_perp = pts[:, 0] * px + pts[:, 1] * py
+
+    height = float(proj_parallel.max() - proj_parallel.min())
+    width = float(proj_perp.max() - proj_perp.min())
+
+    return width, height

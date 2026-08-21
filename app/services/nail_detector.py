@@ -97,21 +97,6 @@ def _point_to_polygon_distance(x, y, polygon):
     return min_dist
 
 
-def _nail_orientation(polygon):
-    """Orientation (degrees) of a nail's long axis, via PCA of its vertices.
-
-    Used as a fallback when a nail cannot be paired with a fingertip, so the
-    nail is still returned with a sensible rotation instead of being dropped.
-    """
-    pts = np.asarray(polygon, dtype=np.float64)
-    mean = pts.mean(axis=0)
-    cov = np.cov(pts - mean, rowvar=False)
-    # Principal axis = eigenvector of the largest eigenvalue of the covariance.
-    w, v = np.linalg.eigh(cov)
-    principal = v[:, int(np.argmax(w))]
-    return float(math.degrees(math.atan2(principal[1], principal[0])))
-
-
 def filter_nails_by_hands(nails_result, hands_data, width, height):
     """Annotate every detected nail with the finger it belongs to.
 
