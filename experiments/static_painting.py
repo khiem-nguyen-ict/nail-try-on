@@ -88,7 +88,7 @@ def draw_nail_debug(mask_draw, points, cx, cy, angle, w, h, z, a3d):
     line_y2 = mid_y + py * w
     mask_draw.line([(line_x1, line_y1), (line_x2, line_y2)], fill=debug_color, width=4)
 
-    nw, nh = get_nail_size(angle, w, h)
+    nw, nh = get_nail_size(angle, points)
     lh = length * 0.2
     tt = cy + length
     f = get_debug_font(length)

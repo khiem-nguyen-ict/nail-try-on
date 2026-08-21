@@ -233,7 +233,7 @@ def paint_nail_pattern(
     skewed = skew_sample_to_a3d(sample_image, a3d)
 
     # 2. Resize to the nail's footprint.
-    ref_w, ref_h = get_nail_size(angle, w, h)
+    ref_w, ref_h = get_nail_size(angle, points)
     if a3d_norm > 0:
         ref_w = ref_w * (1.0 + a3d_norm * A3D_WIDTH_EXPANSION)
     a3d_abs = abs(float(a3d))

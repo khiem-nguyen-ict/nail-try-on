@@ -107,6 +107,30 @@ requires `diffusers` + `torch` plus a `ROBOFLOW_API_KEY`.
 `experiments/nails_beauty.ipynb` is an exploratory Jupyter notebook covering
 alternative nail-beauty workflows (color transfer, gloss, and pattern overlay).
 
+## Geometry Utilities
+
+`app/utils/polygon.py` contains geometry helpers used to size and align pattern
+images to nail polygons. The key function for pattern sizing is
+`get_nail_size(a, points)`.
+
+### Oriented Bounding Box (`get_nail_size`)
+
+To determine how large a pattern image should be drawn on a nail, the code
+computes an **oriented bounding box** around the segmented nail polygon that
+is aligned with the nail's long axis (`angle a`).
+
+**Algorithm:**
+
+1. **Project points onto two perpendicular axes:**
+   - **Parallel axis** — unit vector `u = (cos(a), sin(a))`, aligned with the nail's long axis.
+   - **Perpendicular axis** — unit vector `p = (-sin(a), cos(a))`, 90° from the long axis.
+2. **Compute extent along each axis** by taking the difference between the maximum and minimum projected coordinates of all polygon vertices.
+3. **Return dimensions:**
+   - `width` = extent along the perpendicular axis
+   - `height` = extent along the parallel axis
+
+This gives the exact width and height of the smallest rectangle that fits the nail polygon and is rotated by angle `a`, which is then used to scale the reference pattern image before painting.
+
 ## Project Structure
 
 The backend is organized as a Python package under `app/` to separate
@@ -130,7 +154,7 @@ app/
     __init__.py
     color.py             # Hex-to-RGB color helper
     image.py             # Color matching and base image profile helpers
-    polygon.py           # Nail geometry helpers (rotated rectangle, sizing, convex hull)
+    polygon.py           # Nail geometry helpers (see [Geometry Utilities](#geometry-utilities))
 ```
 
 - **`app/config.py`** loads environment variables via `python-dotenv` and
