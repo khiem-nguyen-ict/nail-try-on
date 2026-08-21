@@ -250,11 +250,12 @@ def paint_nail_pattern(
 
     # 4. Depth-based brightness + optional color matching.
     rotated_img = apply_depth_brightness(rotated_img, z)
-    if base_color_profile is not None:
-        rotated_img = apply_color_matching(rotated_img, base_color_profile)
-
+    
     # 4.5 Region-based brightness adjustment using the original nail region.
     rotated_img = apply_region_brightness(rotated_img, base_image, points)
+    if base_color_profile is not None:
+        rotated_img = apply_color_matching(rotated_img, base_color_profile)
+    
 
     rw, rh = rotated_img.size
 
