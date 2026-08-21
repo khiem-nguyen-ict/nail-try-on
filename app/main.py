@@ -124,6 +124,17 @@ def create_app() -> FastAPI:
         )
         return Response(content=processed, media_type="image/jpeg")
 
+    @app.get("/api/patterns")
+    async def list_patterns():
+        """Return a list of available pattern image filenames matching sample-*.png."""
+        directory = "sample-images"
+        files = sorted(
+            f
+            for f in os.listdir(directory)
+            if f.startswith("sample-") and f.lower().endswith((".png", ".webp"))
+        )
+        return {"patterns": files}
+
     @app.post("/paint_pattern")
     async def paint_pattern_endpoint(
         file: UploadFile = File(...),

@@ -105,7 +105,7 @@
             width: 100vw;
             height: 100vh;
             height: 100dvh;
-            object-fit: cover;
+            object-fit: contain;
             object-position: center;
             background: #000;
             display: block;
@@ -208,8 +208,8 @@
             display: flex;
         }
         .pattern-thumb {
-            width: 48px;
-            height: 48px;
+            width: 64px;
+            height: 96px;
             border-radius: 10px;
             border: 3px solid transparent;
             cursor: pointer;
@@ -280,10 +280,7 @@
         <span id="opacityValue"></span>
     </div>
 
-    <div id="patternGallery">
-        <img class="pattern-thumb" src="/patterns/sample.png" data-pattern="sample.png" title="Pinky" />
-        <img class="pattern-thumb" src="/patterns/sample-2.png" data-pattern="sample-2.png" title="Crystal" />
-    </div>
+    <div id="patternGallery"></div>
     
     <script>
         const video = document.getElementById('video');
@@ -555,15 +552,33 @@
         });
 
         // Pattern gallery logic
-        const patternThumbs = document.querySelectorAll('.pattern-thumb');
+        async function loadPatterns() {
+            console.log("---> load");
+            try {
+                const response = await fetch('/api/patterns');
+                const data = await response.json();
+                const gallery = document.getElementById('patternGallery');
+                gallery.innerHTML = '';
 
-        patternThumbs.forEach(thumb => {
-            thumb.addEventListener('click', () => {
-                patternThumbs.forEach(t => t.classList.remove('selected'));
-                thumb.classList.add('selected');
-                paintWithPattern(thumb.dataset.pattern);
-            });
-        });
+                data.patterns.forEach(filename => {
+                    const img = document.createElement('img');
+                    img.className = 'pattern-thumb';
+                    img.src = `/patterns/${filename}`;
+                    img.dataset.pattern = filename;
+                    img.title = filename.replace(/^sample-/, '').replace(/\.png$/i, '');
+                    img.addEventListener('click', () => {
+                        document.querySelectorAll('.pattern-thumb').forEach(t => t.classList.remove('selected'));
+                        img.classList.add('selected');
+                        paintWithPattern(img.dataset.pattern);
+                    });
+                    gallery.appendChild(img);
+                });
+            } catch (err) {
+                console.error('Failed to load patterns:', err);
+            }
+        }
+
+        loadPatterns();
 
         document.addEventListener('DOMContentLoaded', () => {
             updateOpacity(opacitySlider.value);
