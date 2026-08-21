@@ -1,4 +1,6 @@
 import math
+import numpy as np
+from scipy.spatial import ConvexHull
 
 def get_rect_boundary(start_x, start_y, dx, dy, rect_x, rect_y, rect_w, rect_h):
     if dx == 0 and dy == 0:
@@ -34,6 +36,11 @@ def get_rect_boundary(start_x, start_y, dx, dy, rect_x, rect_y, rect_w, rect_h):
         return (start_x + t_max * dx, start_y + t_max * dy)
     return None
 
+def make_polygon_convex(polygon):
+    points = np.array(polygon)
+    hull = ConvexHull(points)
+    convex_polygon = points[hull.vertices].tolist()
+    return convex_polygon
 
 def compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh):
     if not points:
@@ -63,7 +70,8 @@ def compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh)
         else:
             new_x, new_y = x, y
         adjusted.append((new_x - shifted_x, new_y - shifted_y))
-    return adjusted
+    adjusted_convex = make_polygon_convex(adjusted)
+    return adjusted_convex
 
 def get_nail_size(a: float, w: float, h: float):
     # Handle undefined angles
