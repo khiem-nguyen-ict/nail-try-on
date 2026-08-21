@@ -172,7 +172,7 @@ def main(original_image, reference_image, output_path):
 
 if __name__ == "__main__":
     sample_dir = "sample-images"
-    ref_image = "sample-images/sample-2.png"
+    ref_image = "sample-images/sample-Crystal-Diamon.png"
     ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif"}
     EXCLUDED_PATTERNS = ("-output", "-enhance", "-debug", "-mp-debug")
     for filename in sorted(os.listdir(sample_dir)):
