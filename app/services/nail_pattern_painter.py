@@ -43,7 +43,7 @@ DEPTH_BRIGHTNESS_STRENGTH = 0.03
 # stay smooth after the subsequent Gaussian blur + downscale.
 MASK_SUPERSAMPLE = 4
 # Gaussian blur radius (applied at supersampled resolution) for mask feathering.
-MASK_BLUR_RADIUS = 6
+MASK_BLUR_RADIUS = 3
 
 # How far (in nail-height units) to slide the pattern along the finger axis so
 # the painted pattern aligns with the nail's long axis rather than its center.

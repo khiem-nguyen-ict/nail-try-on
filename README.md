@@ -130,7 +130,7 @@ app/
     __init__.py
     color.py             # Hex-to-RGB color helper
     image.py             # Color matching and base image profile helpers
-    polygon.py           # Nail geometry helpers (rotated rectangle, sizing)
+    polygon.py           # Nail geometry helpers (rotated rectangle, sizing, convex hull)
 ```
 
 - **`app/config.py`** loads environment variables via `python-dotenv` and
