@@ -553,7 +553,6 @@
 
         // Pattern gallery logic
         async function loadPatterns() {
-            console.log("---> load");
             try {
                 const response = await fetch('/api/patterns');
                 const data = await response.json();

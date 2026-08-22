@@ -1,12 +1,10 @@
-import cv2
-import numpy as np
 import colorsys
 from PIL import Image, ImageFilter, ImageStat
 
 # Color matching defaults
 COLOR_MATCH_HUE_SHIFT = 0.04       # max hue shift toward base image (0-1, fraction of hue circle)
 COLOR_MATCH_SATURATION = 0.15      # how much to blend saturation toward base image (0-1)
-COLOR_MATCH_BRIGHTNESS = 0.2       # how much to blend brightness toward base image (0-1)
+COLOR_MATCH_BRIGHTNESS = 0.3       # how much to blend brightness toward base image (0-1)
 
 def get_base_image_color_profile(base_image):
     """Analyze base image and return average HSV values."""
