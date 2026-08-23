@@ -182,6 +182,80 @@ def build_smooth_mask(points, rw, rh, pattern_alpha):
     return ImageChops.multiply(polygon_mask, pattern_alpha)
 
 
+def draw_cuticle_shadow_on_base(
+    base_image, points, angle, shadow_strength=0.75, thickness=6
+):
+    """Renders a realistic 3D cuticle shadow onto the base image.
+
+    Targeting the inner 50% region of the nail (the cuticle base opposite
+    to the fingertip angle vector). Optimized using bounding box cropping.
+    """
+    pts_arr = np.array(points, dtype=np.float32)
+
+    # 1. Compute bounding box with padding to prevent edge clipping
+    padding = thickness * 4 + 10
+    x_min = max(0, int(np.min(pts_arr[:, 0])) - padding)
+    y_min = max(0, int(np.min(pts_arr[:, 1])) - padding)
+    x_max = min(base_image.width, int(np.max(pts_arr[:, 0])) + padding)
+    y_max = min(base_image.height, int(np.max(pts_arr[:, 1])) + padding)
+
+    crop_w = x_max - x_min
+    crop_h = y_max - y_min
+    if crop_w <= 0 or crop_h <= 0:
+        return
+
+    # Translate points to local ROI coordinate space
+    local_pts = pts_arr - [x_min, y_min]
+
+    # 2. Rasterize polygon mask only within ROI
+    nail_mask = Image.new("L", (crop_w, crop_h), 0)
+    ImageDraw.Draw(nail_mask).polygon(
+        [(p[0], p[1]) for p in local_pts], fill=255
+    )
+
+    # 3. Extract boundary contour within ROI
+    # Calculate size and guarantee it is an odd integer >= 3
+    outer = nail_mask.filter(ImageFilter.MaxFilter(thickness * 2 + 1))
+    inner = nail_mask.filter(ImageFilter.MinFilter(thickness * 2 + 1))
+    boundary = ImageChops.difference(outer, inner)
+
+    # 4. Calculate local center
+    cx, cy = np.mean(local_pts[:, 0]), np.mean(local_pts[:, 1])
+
+    # 5. Determine vector pointing toward the cuticle base
+    rad = math.radians(float(angle))
+    dir_x = -math.cos(rad)
+    dir_y = -math.sin(rad)
+
+    # 6. Build gradient mask only over ROI coordinates
+    y_idx, x_idx = np.indices((crop_h, crop_w), dtype=np.float32)
+    projection = (x_idx - cx) * dir_x + (y_idx - cy) * dir_y
+
+    max_dist = np.max(np.abs(projection)) + 1e-5
+    norm_proj = projection / max_dist
+
+    cuticle_half = np.clip(norm_proj * 3.0, 0.0, 1.0)
+    cuticle_zone = Image.fromarray(
+        (cuticle_half * 255).astype(np.uint8), mode="L"
+    )
+
+    # 7. Isolate final shadow mask along the inner cuticle boundary
+    cuticle_shadow_mask = ImageChops.multiply(boundary, cuticle_zone)
+
+    blur_radius = max(1.5, thickness * 0.4)
+    cuticle_shadow_mask = cuticle_shadow_mask.filter(
+        ImageFilter.GaussianBlur(radius=blur_radius)
+    )
+
+    if shadow_strength < 1.0:
+        cuticle_shadow_mask = ImageEnhance.Brightness(
+            cuticle_shadow_mask
+        ).enhance(shadow_strength)
+
+    # 8. Composite shadow back onto base image at (x_min, y_min)
+    black_layer = Image.new("RGB", (crop_w, crop_h), (0, 0, 0))
+    base_image.paste(black_layer, (x_min, y_min), cuticle_shadow_mask)
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -276,6 +350,11 @@ def paint_nail_pattern(
     )
     final_mask = build_smooth_mask(mask_points, rw, rh, nail_alpha)
 
-    # 7. Composite onto the base image.
+    # 7. Composite pattern onto the base image.
     base_image.paste(rotated_img, (shifted_x, shifted_y), final_mask)
+
+    # 8. Render realistic cuticle shadow overlay onto the base canvas.
+    draw_cuticle_shadow_on_base(
+        base_image, points, angle, shadow_strength=0.1, thickness=6
+    )
     return base_image

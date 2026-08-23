@@ -108,9 +108,9 @@ def filter_nails_by_hands(nails_result, hands_data, width, height):
     one-to-one assignment: each fingertip is claimed by at most one nail and
     each nail gets its nearest *available* fingertip.
 
-    This removes the old ``SPACE_DETECTION_THRESHOLD`` dilemma:
-      * Wrong-finger matches are prevented by the exclusive one-to-one
-        assignment -- a fingertip can no longer be shared by several nails.
+    The matching uses an exclusive one-to-one assignment:
+      * Wrong-finger matches are prevented -- a fingertip can no longer be
+        shared by several nails.
       * Matched fingertips are marked in ``hands_data`` (``matched: True``)
         so downstream consumers can inspect which tips were consumed.
 

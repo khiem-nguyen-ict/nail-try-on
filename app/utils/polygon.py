@@ -70,8 +70,10 @@ def compute_adjusted_points(points, cx, cy, angle, shifted_x, shifted_y, rw, rh)
         else:
             new_x, new_y = x, y
         adjusted.append((new_x - shifted_x, new_y - shifted_y))
-    adjusted_convex = make_polygon_convex(adjusted)
-    return adjusted_convex
+    # there is a bug here (wrong shape)
+    # adjusted_convex = make_polygon_convex(adjusted)
+    #return adjusted_convex
+    return adjusted
 
 def get_nail_size(a: float, points):
     # Find the width and height of the boundary rectangle containing the polygon points,
