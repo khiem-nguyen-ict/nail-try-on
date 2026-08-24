@@ -20,8 +20,6 @@ from app.config import (
     MAX_CAPTURE_DIM,
     MAX_SEND_FPS,
     NAIL_ALPHA,
-    IMAGE_QUALITY,
-    ROBOFLOW_MAX_DIM,
     NAIL_BLUR,
     NO_HAND_COOLDOWN,
     MAX_PROCESS_FPS,
@@ -43,7 +41,7 @@ def create_app() -> FastAPI:
         html = html.replace("{{MAX_CAPTURE_DIM}}", str(MAX_CAPTURE_DIM))
         html = html.replace("{{MAX_SEND_FPS}}", str(MAX_SEND_FPS))
         html = html.replace("{{NAIL_ALPHA}}", str(NAIL_ALPHA))
-        html = html.replace("{{IMAGE_QUALITY}}", str(IMAGE_QUALITY))
+        html = html.replace("{{IMAGE_QUALITY}}", "80")
         return HTMLResponse(html)
 
     @app.websocket("/ws/{session_id}")
@@ -89,8 +87,8 @@ def create_app() -> FastAPI:
                         await websocket.send_bytes(data)
                         continue
 
-                    processed, hands_found, reason = await asyncio.to_thread(
-                        process_frame_with_hand_status, data, ROBOFLOW_MAX_DIM, current_color, current_opacity
+                    processed, hands_found, _ = await asyncio.to_thread(
+                        process_frame_with_hand_status, data, current_color, current_opacity
                     )
                     last_process_time = now
 
@@ -117,7 +115,6 @@ def create_app() -> FastAPI:
         processed, _, _ = await asyncio.to_thread(
             process_frame_with_hand_status,
             image_bytes,
-            ROBOFLOW_MAX_DIM,
             hex_to_rgb(color),
             float(opacity),
             NAIL_BLUR

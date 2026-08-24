@@ -3,11 +3,7 @@ import json
 import math
 import urllib.parse
 import urllib.request
-from io import BytesIO
 from typing import Union
-from PIL import Image, ImageOps
-
-import numpy as np
 
 from app.config import (
     PARAMS,

@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw, ImageOps
+from PIL import Image, ImageOps
 from io import BytesIO
 from typing import Union
 

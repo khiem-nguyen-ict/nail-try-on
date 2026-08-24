@@ -1,20 +1,23 @@
 from PIL import Image, ImageOps
 from io import BytesIO
+import copy
 
 from app.config import (
     FRAME_SKIPPED_BLUR_THRESHOLD,
     RED,
     NAIL_ALPHA,
-    NAIL_BLUR,
 )
+
+NAIL_BLUR = 1
 from app.services.hand_detector import detect_hands, is_blur
 from app.services.nail_detector import detect_nails, filter_nails_by_hands
 from app.services.nail_painter import paint_nails
+from app.utils import image_id
 
+cached_points = {}
 
 def process_frame_with_hand_status(
     image_bytes: bytes,
-    roboflow_max_dim: int,
     color: tuple = RED,
     alpha: float = NAIL_ALPHA,
     blur: int = NAIL_BLUR,
@@ -29,28 +32,32 @@ def process_frame_with_hand_status(
             image = img.convert("RGB")
             width, height = image.size
 
-        # Layer 2: Hand detection
-        hands_data = detect_hands(image_bytes, preloaded_image=image)
+        img_id = image_id(image_bytes)
+        if img_id not in cached_points:    
+            # Layer 2: Hand detection
+            hands_data = detect_hands(image_bytes, preloaded_image=image)
 
-        if not hands_data:
-            return image_bytes, False, "no_hands"
+            if not hands_data:
+                return image_bytes, False, "no_hands"
 
-        # Layer 3: Nail detection + filtering
-        nails = detect_nails(image_bytes)
-        raw_predictions = nails.get("predictions", [])
+            # Layer 3: Nail detection + filtering
+            nails = detect_nails(image_bytes)
+            raw_predictions = nails.get("predictions", [])
 
-        if not raw_predictions:
-            return image_bytes, False, "no_nail_detections"
+            if not raw_predictions:
+                return image_bytes, False, "no_nail_detections"
 
-        predictions = filter_nails_by_hands(nails, hands_data, width, height)
+            predictions = filter_nails_by_hands(nails, hands_data, width, height)
 
-        if not predictions:
-            # FALLBACK: relaxed filter — keep any nail containing a fingertip
-            predictions = _relaxed_nail_filter(nails, hands_data, width, height)
+            if not predictions:
+                # FALLBACK: relaxed filter — keep any nail containing a fingertip
+                predictions = _relaxed_nail_filter(nails, hands_data, width, height)
 
-        if not predictions:
-            return image_bytes, False, "no_nails_near_fingertips"
-
+            if not predictions:
+                return image_bytes, False, "no_nails_near_fingertips"
+            cached_points[img_id] = copy.deepcopy(predictions)
+        else:
+            predictions = copy.deepcopy(cached_points[img_id])
         # Layer 4: Paint
         result = paint_nails(
             image_bytes, predictions, color=color, alpha=alpha, blur=blur, preloaded_image=image

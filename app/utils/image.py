@@ -29,7 +29,6 @@ def apply_color_matching(nail_img, base_profile):
 
     # Compute circular hue shift toward base hue
     base_h = base_profile["hue"]
-    hue_diff = base_h
     # We'll shift each pixel's hue by a fraction of the shortest path to base_h
     # Build a lookup table for hue channel (0-255)
     h_lut = []

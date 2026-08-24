@@ -348,6 +348,7 @@ def paint_nail_pattern(
     mask_points = compute_adjusted_points(
         points, cx, cy, angle, shifted_x, shifted_y, rw, rh
     )
+    
     final_mask = build_smooth_mask(mask_points, rw, rh, nail_alpha)
 
     # 7. Composite pattern onto the base image.
