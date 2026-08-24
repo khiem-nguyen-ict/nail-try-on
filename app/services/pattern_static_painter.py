@@ -7,19 +7,16 @@ hand image using the existing detection + pattern-painting pipeline from
 
 from io import BytesIO
 import copy
-import hashlib
 from PIL import Image, ImageOps
 
 from app.services.hand_detector import detect_hands
 from app.services.nail_detector import detect_nails, filter_nails_by_hands
 from app.services.nail_pattern_painter import paint_nail_pattern
+from app.utils import image_id
 from app.utils.image import get_base_image_color_profile
 
 cached_points = {}
 
-
-def _image_id(image_bytes: bytes) -> str:
-    return hashlib.sha256(image_bytes).hexdigest()[:16]
 
 def paint_with_pattern(image_bytes: bytes, pattern_path: str) -> bytes:
     """Paint the selected nail pattern onto a hand image.
@@ -37,8 +34,8 @@ def paint_with_pattern(image_bytes: bytes, pattern_path: str) -> bytes:
     with ImageOps.exif_transpose(Image.open(pattern_path)) as ref_image:
         sample_image = ref_image.convert("RGBA")
                 
-    image_id = _image_id(image_bytes)
-    if image_id not in cached_points:
+    img_id = image_id(image_bytes)
+    if img_id not in cached_points:
         hands_data = detect_hands(image_bytes, preloaded_image=base_image)
         if not hands_data:
             print("No hands detected.")
@@ -53,10 +50,10 @@ def paint_with_pattern(image_bytes: bytes, pattern_path: str) -> bytes:
         filtered_nails.sort(
             key=lambda nail: (sum(float(p["z"]) for p in nail.get("points", [])), nail.get("a3d", 0))
         )
-        cached_points[image_id] = copy.deepcopy(filtered_nails)
+        cached_points[img_id] = copy.deepcopy(filtered_nails)
     else:
         print("--> Use cached filtered_nails")
-        filtered_nails = copy.deepcopy(cached_points[image_id])
+        filtered_nails = copy.deepcopy(cached_points[img_id])
 
     base_color_profile = get_base_image_color_profile(base_image)
 

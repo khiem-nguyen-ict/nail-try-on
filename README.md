@@ -29,7 +29,6 @@ Nail regions are segmented using a [RoBoFlow](https://roboflow.com/) serverless 
 - **Model:** `thanh-khiem-nguyen/nails_segmentation-m8ew1-1-rfdetr-seg-large-t1`
 - **Output:** Polygon masks for detected nail regions with confidence scores
 - **Filtering:** Every detected nail is matched to its nearest fingertip via a one-to-one assignment (no hand-tuned proximity threshold). Nails without a nearby fingertip are dropped (not painted with a fallback orientation), and each matched fingertip is marked (`matched: True`) in `hands_data` so downstream consumers can inspect which tips were consumed.
-- **Optimization:** Images sent to the API are downscaled to `ROBOFLOW_MAX_DIM` to reduce latency and response size
 - **Debug output:** Passing `debug_save_path` to `detect_hands()` generates a visualization with fingertip (red), DIP (green), dashed connecting lines, and finger ID labels for manual verification.
 
 ## Pipeline Steps
@@ -60,7 +59,7 @@ fingertip are dropped rather than painted with a fallback orientation.
 
 ### 4. Final Painted Result
 The selected nail regions are recolored with full HSV color transfer, blended
-at `NAIL_ALPHA` and blurred with `NAIL_BLUR`. A distance-transform-based
+at `NAIL_ALPHA`. A distance-transform-based
 glossy effect simulates light reflection on the nail surface. Nails are sorted
 by depth (`z` sum) and 3D angle (`a3d`) before painting so overlapping nails
 render in correct back-to-front order.
@@ -228,15 +227,11 @@ FastAPI app at `/`.
 |---|---|---|
 | `ROBOFLOW_API_KEY` | — | **Required.** RoBoFlow API key |
 | `NAIL_ALPHA` | `0.4` | Blend strength for color transfer |
-| `NAIL_BLUR` | `1` | Gaussian blur radius applied to the nail mask |
-| `YOLO_CONFIDENCE_THRESHOLD` | `0.5` | Minimum confidence for nail predictions |
 | `MAX_PROCESS_FPS` | `20` | Max frames per second the server will process per WebSocket connection. |
 | `NO_HAND_COOLDOWN` | `1.0` | Seconds to skip processing after no hands are detected. |
-| `ROBOFLOW_MAX_DIM` | `1024` | Max pixel dimension for images sent to the RoBoFlow API. Lower = faster API response. |
 | `FRAME_SKIPPED_BLUR_THRESHOLD` | `50.0` | Laplacian variance threshold below which a frame is considered too blurry and skipped. Lower = stricter (more frames skipped). |
 | `MAX_CAPTURE_DIM` | `1280` | Max pixel dimension for the captured frame sent from the browser to the backend. |
 | `MAX_SEND_FPS` | `10` | Max frames per second the browser will send to the backend over WebSocket. |
-| `IMAGE_QUALITY` | `80` | JPEG compression quality (0–100) for frames sent from the backend to the browser. Lower = smaller payload, lower latency. |
 
 ## Processing Workflow
 
@@ -259,8 +254,7 @@ Each frame from the browser WebSocket goes through this pipeline:
     paired with a nearby fingertip are dropped. Each matched fingertip is marked
     in `hands_data` (`matched: True`).
   7. **Paint nails** — The selected nail regions are recolored using full HSV
-     color transfer with the selected color, blended at `NAIL_ALPHA` and blurred
-     with `NAIL_BLUR`. A distance-transform-based glossy effect is applied
+      color transfer with the selected color. A distance-transform-based glossy effect is applied
      to simulate light reflection on the nail surface.
  8. **Stream back** — The processed JPEG is sent back to the browser over the
     same WebSocket.
@@ -283,7 +277,6 @@ The app includes several optimizations for CPU-limited hosting:
 - **Frame rate limiting:** Each WebSocket connection is capped at `MAX_PROCESS_FPS` to avoid CPU saturation.
 - **Blur skip:** Frames with low Laplacian variance are detected as blurry and returned unprocessed, skipping the expensive hand detection and API calls.
 - **No-hand cooldown:** When no hands are detected, processing is skipped for `NO_HAND_COOLDOWN` seconds.
-- **Downscaled API requests:** Images sent to RoBoflow are resized to `ROBOFLOW_MAX_DIM`, then polygon coordinates are scaled back.
 - **Single image decode:** Each frame is decoded from JPEG bytes only once and reused across hand detection, API inference, and painting.
 
 ### Render free tier expectations
@@ -315,15 +308,11 @@ docker build -t nail-try-on .
 docker run -p 8000:8000 \
   -e ROBOFLOW_API_KEY=<your-key> \
   -e NAIL_ALPHA=0.4 \
-  -e NAIL_BLUR=1 \
-  -e YOLO_CONFIDENCE_THRESHOLD=0.5 \
   -e MAX_PROCESS_FPS=20 \
   -e NO_HAND_COOLDOWN=1.0 \
-  -e ROBOFLOW_MAX_DIM=1024 \
   -e FRAME_SKIPPED_BLUR_THRESHOLD=50.0 \
    -e MAX_CAPTURE_DIM=1280 \
   -e MAX_SEND_FPS=10 \
-  -e IMAGE_QUALITY=80 \
   nail-try-on
 ```
 

@@ -9,16 +9,15 @@ load_dotenv()
 # Default fill color: solid red.
 RED = (255, 0, 0)
 NAIL_ALPHA = float(os.getenv("NAIL_ALPHA", "0.4"))
-NAIL_BLUR = int(os.getenv("NAIL_BLUR", "1"))
-YOLO_CONFIDENCE_THRESHOLD = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", "0.5"))
 MAX_PROCESS_FPS = int(os.getenv("MAX_PROCESS_FPS", "20"))
 NO_HAND_COOLDOWN = float(os.getenv("NO_HAND_COOLDOWN", "1.0"))
-ROBOFLOW_MAX_DIM = int(os.getenv("ROBOFLOW_MAX_DIM", "1024"))
 FRAME_SKIPPED_BLUR_THRESHOLD = float(os.getenv("FRAME_SKIPPED_BLUR_THRESHOLD", "50.0"))
 MAX_CAPTURE_DIM = int(os.getenv("MAX_CAPTURE_DIM", "1280"))
 MAX_SEND_FPS = int(os.getenv("MAX_SEND_FPS", "10"))
-# JPEG compression quality (0-100) for captured frames sent to the server
-IMAGE_QUALITY = int(os.getenv("IMAGE_QUALITY", "80"))
+
+# Local constants (not configurable via env)
+NAIL_BLUR = 1
+YOLO_CONFIDENCE_THRESHOLD = 0.5
 
 TARGET_HSV = np.array([0, 255, 255], dtype=np.float32)
 

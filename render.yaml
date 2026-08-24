@@ -8,21 +8,13 @@ services:
         sync: false
       - key: NAIL_ALPHA
         value: 0.4
-      - key: NAIL_BLUR
-        value: 2
-      - key: YOLO_CONFIDENCE_THRESHOLD
-        value: 0.5
       - key: MAX_PROCESS_FPS
         value: 10
       - key: NO_HAND_COOLDOWN
         value: 1.0
-      - key: ROBOFLOW_MAX_DIM
-        value: 1024
       - key: FRAME_SKIPPED_BLUR_THRESHOLD
         value: 30.0
       - key: MAX_CAPTURE_DIM
         value: 1280
       - key: MAX_SEND_FPS
         value: 10
-      - key: IMAGE_QUALITY
-        value: 80
