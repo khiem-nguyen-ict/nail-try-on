@@ -228,7 +228,6 @@ FastAPI app at `/`.
 | `ROBOFLOW_API_KEY` | — | **Required.** RoBoFlow API key |
 | `NAIL_ALPHA` | `0.4` | Blend strength for color transfer |
 | `MAX_PROCESS_FPS` | `20` | Max frames per second the server will process per WebSocket connection. |
-| `NO_HAND_COOLDOWN` | `1.0` | Seconds to skip processing after no hands are detected. |
 | `FRAME_SKIPPED_BLUR_THRESHOLD` | `50.0` | Laplacian variance threshold below which a frame is considered too blurry and skipped. Lower = stricter (more frames skipped). |
 | `MAX_CAPTURE_DIM` | `1280` | Max pixel dimension for the captured frame sent from the browser to the backend. |
 | `MAX_SEND_FPS` | `10` | Max frames per second the browser will send to the backend over WebSocket. |
@@ -260,8 +259,6 @@ Each frame from the browser WebSocket goes through this pipeline:
     same WebSocket.
 
 If processing fails or no nails are found, the original frame is returned.
-At the WebSocket level, when no hands are detected, processing is skipped for
-`NO_HAND_COOLDOWN` seconds to save CPU.
 
 ## Performance
 
@@ -276,7 +273,6 @@ The app includes several optimizations for CPU-limited hosting:
 - **Capture downscale:** Frames sent from the browser are downscaled to `MAX_CAPTURE_DIM` (1280px) to reduce bandwidth and backend processing time.
 - **Frame rate limiting:** Each WebSocket connection is capped at `MAX_PROCESS_FPS` to avoid CPU saturation.
 - **Blur skip:** Frames with low Laplacian variance are detected as blurry and returned unprocessed, skipping the expensive hand detection and API calls.
-- **No-hand cooldown:** When no hands are detected, processing is skipped for `NO_HAND_COOLDOWN` seconds.
 - **Single image decode:** Each frame is decoded from JPEG bytes only once and reused across hand detection, API inference, and painting.
 
 ### Render free tier expectations
@@ -309,7 +305,6 @@ docker run -p 8000:8000 \
   -e ROBOFLOW_API_KEY=<your-key> \
   -e NAIL_ALPHA=0.4 \
   -e MAX_PROCESS_FPS=20 \
-  -e NO_HAND_COOLDOWN=1.0 \
   -e FRAME_SKIPPED_BLUR_THRESHOLD=50.0 \
    -e MAX_CAPTURE_DIM=1280 \
   -e MAX_SEND_FPS=10 \

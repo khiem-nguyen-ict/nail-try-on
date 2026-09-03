@@ -10,8 +10,6 @@ services:
         value: 0.4
       - key: MAX_PROCESS_FPS
         value: 10
-      - key: NO_HAND_COOLDOWN
-        value: 1.0
       - key: FRAME_SKIPPED_BLUR_THRESHOLD
         value: 30.0
       - key: MAX_CAPTURE_DIM
