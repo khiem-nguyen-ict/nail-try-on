@@ -10,13 +10,13 @@ load_dotenv()
 RED = (255, 0, 0)
 NAIL_ALPHA = float(os.getenv("NAIL_ALPHA", "0.4"))
 MAX_PROCESS_FPS = int(os.getenv("MAX_PROCESS_FPS", "20"))
-NO_HAND_COOLDOWN = float(os.getenv("NO_HAND_COOLDOWN", "1.0"))
 FRAME_SKIPPED_BLUR_THRESHOLD = float(os.getenv("FRAME_SKIPPED_BLUR_THRESHOLD", "50.0"))
 MAX_CAPTURE_DIM = int(os.getenv("MAX_CAPTURE_DIM", "1280"))
 MAX_SEND_FPS = int(os.getenv("MAX_SEND_FPS", "10"))
 
 # Local constants (not configurable via env)
 NAIL_BLUR = 1
+NO_HAND_COOLDOWN = 1.0
 YOLO_CONFIDENCE_THRESHOLD = 0.5
 
 TARGET_HSV = np.array([0, 255, 255], dtype=np.float32)
